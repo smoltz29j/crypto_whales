@@ -20,6 +20,7 @@ SCAN_TOP_N = 1500               # how many top-accountValue addresses to inspect
 MIN_COIN_NOTIONAL = 1_000_000   # USD: min summed BTC+ETH position to count as a whale
 TOP_N = 25                      # how many whales to print
 WORKERS = 10                    # concurrent clearinghouse_state queries
+BIAS_THRESHOLD = 0.05           # |net_bias| below this -> NEUTRAL (else LONG/SHORT)
 # -------------------------------------------------------------------------
 
 
@@ -28,6 +29,66 @@ def fnum(x) -> float:
         return float(x)
     except (TypeError, ValueError):
         return 0.0
+
+
+def fmt_usd(v: float) -> str:
+    """Compact signed USD: $1.2B / $220.2M / $809K / $42."""
+    sign = "-" if v < 0 else ""
+    a = abs(v)
+    for div, suf in ((1e9, "B"), (1e6, "M"), (1e3, "K")):
+        if a >= div:
+            return f"{sign}${a / div:.1f}{suf}"
+    return f"{sign}${a:.0f}"
+
+
+def aggregate_sentiment(whales: list[dict]) -> dict[str, dict]:
+    """Notional-weighted long/short aggregate over the whale set, per coin (#3).
+
+    For each target coin, sum |positionValue| on each side and count wallets,
+    then derive net_bias = (long - short) / gross in [-1, +1] (#1). The dual
+    notional+wallet signal exposes concentration: a big net with 1L/4S is one
+    whale, not a crowd.
+
+    Caveat: this cohort is selected by *size* (MIN_COIN_NOTIONAL), not skill, so
+    the aggregate is notional-weighted, not skill-weighted -- see
+    notes/reference_repos.md.
+    """
+    agg: dict[str, dict] = {}
+    for w in whales:
+        for coin, p in w["positions"].items():
+            szi = fnum(p["szi"])
+            notional = abs(fnum(p.get("positionValue")))
+            a = agg.setdefault(
+                coin,
+                {"long_ntl": 0.0, "short_ntl": 0.0, "long_n": 0, "short_n": 0},
+            )
+            if szi > 0:
+                a["long_ntl"] += notional
+                a["long_n"] += 1
+            elif szi < 0:
+                a["short_ntl"] += notional
+                a["short_n"] += 1
+    for a in agg.values():
+        gross = a["long_ntl"] + a["short_ntl"]
+        a["gross"] = gross
+        a["net"] = a["long_ntl"] - a["short_ntl"]
+        a["net_bias"] = a["net"] / gross if gross else 0.0
+        b = a["net_bias"]
+        a["lean"] = "LONG" if b > BIAS_THRESHOLD else "SHORT" if b < -BIAS_THRESHOLD else "NEUTRAL"
+    return agg
+
+
+def print_sentiment(agg: dict[str, dict]) -> None:
+    if not agg:
+        return
+    print("\nwhale positioning by coin (notional-weighted, net_bias in [-1,+1]):\n")
+    print(f"  {'COIN':4s}  {'LONG':>9s}  {'SHORT':>9s}  {'NET':>9s}  "
+          f"{'BIAS':>6s}  {'LEAN':<8s} wallets")
+    for coin in sorted(agg, key=lambda c: -agg[c]["gross"]):
+        a = agg[coin]
+        print(f"  {coin:4s}  {fmt_usd(a['long_ntl']):>9s}  {fmt_usd(a['short_ntl']):>9s}  "
+              f"{fmt_usd(a['net']):>9s}  {a['net_bias']:>+6.2f}  {a['lean']:<8s} "
+              f"{a['long_n']}L/{a['short_n']}S")
 
 
 def coin_positions(chs: dict) -> dict[str, dict]:
@@ -91,6 +152,8 @@ def main() -> None:
             print(f"     {side} {coin:4s} ${abs(fnum(p.get('positionValue'))):>13,.0f}  "
                   f"szi={p['szi']:>14s}  uPnL=${fnum(p['unrealizedPnl']):>+12,.0f}  "
                   f"lev={p['leverage']['value']}x  liqPx={p.get('liquidationPx')}")
+
+    print_sentiment(aggregate_sentiment(whales))
 
 
 if __name__ == "__main__":
