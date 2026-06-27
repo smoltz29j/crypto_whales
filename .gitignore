@@ -1,6 +1,6 @@
 __pycache__/
 *.pyc
-# leaderboard cache is ~32MB, refetchable
-data/leaderboard.json
-data/*.json
+# local cache + accumulated time series (leaderboard ~32MB refetchable;
+# whale_track.jsonl is locally-accumulated snapshot state)
+data/
 .venv/
