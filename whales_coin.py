@@ -181,25 +181,32 @@ def scan_address(hl: HyperliquidInfo, row: dict) -> dict | None:
     }
 
 
-def main() -> None:
-    hl = HyperliquidInfo()
+def scan_whales(hl: HyperliquidInfo, progress: bool = False) -> list[dict]:
+    """Scan the top SCAN_TOP_N accounts and return those that are COINS whales,
+    sorted by coin notional. Reused by main() and whales_track.py.
+    """
     lb = hl.leaderboard()
     lb.sort(key=lambda r: -fnum(r["accountValue"]))
     candidates = lb[:SCAN_TOP_N]
-    print(f"scanning top {len(candidates):,} accounts for {sorted(COINS)} "
-          f"positions >= ${MIN_COIN_NOTIONAL:,} ...")
-
+    if progress:
+        print(f"scanning top {len(candidates):,} accounts for {sorted(COINS)} "
+              f"positions >= ${MIN_COIN_NOTIONAL:,} ...")
     whales: list[dict] = []
     with ThreadPoolExecutor(max_workers=WORKERS) as ex:
         futs = [ex.submit(scan_address, hl, r) for r in candidates]
         for i, fut in enumerate(as_completed(futs), 1):
-            if i % 250 == 0:
+            if progress and i % 250 == 0:
                 print(f"  ...{i}/{len(candidates)} scanned, {len(whales)} whales so far")
             res = fut.result()
             if res:
                 whales.append(res)
-
     whales.sort(key=lambda w: -w["coinNotional"])
+    return whales
+
+
+def main() -> None:
+    hl = HyperliquidInfo()
+    whales = scan_whales(hl, progress=True)
     print(f"\nfound {len(whales)} {sorted(COINS)} whales "
           f"(showing top {min(TOP_N, len(whales))} by coin notional)\n")
 
