@@ -1,0 +1,67 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this is
+
+A research project to investigate **whale activity on Hyperliquid (HYPE) — the HyperCore
+perpetuals exchange**. The current phase is exploratory: figure out what data is reachable and
+how to define "whale". Output format (CLI / alerts / dashboard) is intentionally undecided —
+expect experiment scripts, not a finished product.
+
+## Commands
+
+```bash
+python3 explore.py     # sample every data source: market OI, leaderboard shape, one whale's state
+python3 whales.py      # select whales by total account value, print their live positions
+python3 whales_coin.py # rank whales by per-coin exposure (default BTC+ETH) -- the current focus
+```
+
+No dependencies to install — scripts use only the Python 3 stdlib (`urllib`, `json`).
+`requirements.txt` lists optional libs (pandas, httpx) to uncomment when analysis grows.
+
+The Hyperliquid Info API needs **no authentication**; everything runs against the public mainnet.
+
+## Architecture
+
+- **`hl/client.py` — `HyperliquidInfo`**: the only place that talks to Hyperliquid. All market
+  and per-account *reads* go through one POST endpoint (`https://api.hyperliquid.xyz/info`) with a
+  `{"type": ...}` body. The **leaderboard** is the one exception — it lives on a separate static host
+  (`stats-data.hyperliquid.xyz/Mainnet/leaderboard`). Add new endpoints as methods here, not inline.
+- **`explore.py`**: read-only sampler. Edit freely to eyeball a new endpoint's shape.
+- **`whales.py`**: the experiment surface for the open question *"what is a whale?"* by total account
+  value. The knobs (`MIN_ACCOUNT_VALUE`, `WINDOW`, `INCLUDE_LOSERS`, `TOP_N`) are module-level
+  constants meant to be tweaked and rerun. Whale *definition* and *performance filtering* live here.
+- **`whales_coin.py`**: the **current focus** — whales by *per-coin* exposure (default `COINS={"BTC","ETH"}`),
+  since the leaderboard ranks by account value, not per-coin notional. It scans the top
+  `SCAN_TOP_N` accounts with a thread pool (`WORKERS`), keeps those whose summed target-coin notional
+  exceeds `MIN_COIN_NOTIONAL`, and ranks by that. ~21s for 1500 accounts. Caveat: scanning by
+  account-value rank can miss a high-leverage account with a huge coin position but modest equity —
+  raise `SCAN_TOP_N` to widen the net.
+- **`data/`**: gitignored cache. The leaderboard is ~32MB; `client.leaderboard()` caches it to
+  `data/leaderboard.json` and refetches only when older than `max_age_sec` (default 1h). Pass
+  `max_age_sec=0` to force a refresh.
+
+## Data model (what HyperCore actually exposes)
+
+The whale workflow is **discover addresses from the leaderboard → query each address**; there is no
+public market-wide fill feed. Key shapes:
+
+- **`leaderboard()`** → ~39.5k rows: `ethAddress`, `accountValue`, and `windowPerformances`
+  (`day`/`week`/`month`/`allTime`, each with `pnl`/`roi`/`vlm`). This is the whale-discovery and
+  performance-ranking source.
+- **`clearinghouse_state(addr)`** → live perp state: `marginSummary` (accountValue, totalNtlPos) and
+  `assetPositions[].position` (`coin`, `szi` signed size, `positionValue`, `unrealizedPnl`,
+  `liquidationPx`, `leverage`).
+- **`user_fills(addr)`** → up to 2000 recent fills: `coin`, `px`, `sz`, `dir` (Open/Close Long/Short),
+  `closedPnl` (realized PnL per trade), `fee`, `time` (ms). Use `user_fills_by_time` for incremental polling.
+
+## Gotchas (observed, not theoretical)
+
+- **Leaderboard `accountValue` is a stale snapshot.** Top-by-`accountValue` rows often show $0 live
+  notional and 0 positions in `clearinghouse_state` (vaults / inactive / settled accounts). Trust
+  `clearinghouse_state` for current reality; treat leaderboard numbers as a ranking hint only.
+- **`roi` can be wildly large** (e.g. +32955) for accounts seeded with tiny capital — don't rank on
+  `roi` alone; combine with absolute `pnl` and live notional.
+- All numeric fields come back as **strings**; coerce with a tolerant float helper (see `fnum`).
+- `liquidationPx` is `null` for many cross-margin positions; don't assume it's always present.

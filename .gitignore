@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+# leaderboard cache is ~32MB, refetchable
+data/leaderboard.json
+data/*.json
+.venv/

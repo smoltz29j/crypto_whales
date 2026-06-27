@@ -1,0 +1,6 @@
+# Core client + scripts use only the Python 3 standard library (urllib, json).
+# Nothing to install to run explore.py / whales.py.
+#
+# Uncomment when the analysis grows beyond stdlib:
+# pandas        # tabular analysis of fills / positions
+# httpx         # nicer HTTP + connection reuse if polling many addresses
