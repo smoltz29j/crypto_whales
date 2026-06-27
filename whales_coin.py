@@ -21,6 +21,8 @@ MIN_COIN_NOTIONAL = 1_000_000   # USD: min summed BTC+ETH position to count as a
 TOP_N = 25                      # how many whales to print
 WORKERS = 10                    # concurrent clearinghouse_state queries
 BIAS_THRESHOLD = 0.05           # |net_bias| below this -> NEUTRAL (else LONG/SHORT)
+SKILL_WINDOW = "allTime"        # which leaderboard window defines "skill" (pnl)
+MIN_SKILL_PNL = 0.0             # only whales with window pnl above this vote in skill bias
 # -------------------------------------------------------------------------
 
 
@@ -29,6 +31,17 @@ def fnum(x) -> float:
         return float(x)
     except (TypeError, ValueError):
         return 0.0
+
+
+def window_pnl(row: dict, window: str = SKILL_WINDOW) -> float:
+    """allTime/day/week/month pnl from a leaderboard row's windowPerformances.
+
+    windowPerformances is a list of [name, {pnl, roi, vlm}] pairs (not a dict).
+    """
+    for name, perf in row.get("windowPerformances", []):
+        if name == window:
+            return fnum(perf.get("pnl"))
+    return 0.0
 
 
 def fmt_usd(v: float) -> str:
@@ -91,6 +104,52 @@ def print_sentiment(agg: dict[str, dict]) -> None:
               f"{a['long_n']}L/{a['short_n']}S")
 
 
+def skill_weighted_sentiment(whales: list[dict]) -> dict[str, dict]:
+    """Directional bias weighted by trader skill instead of position size.
+
+    Counts only *proven* whales (window pnl > MIN_SKILL_PNL) and weights each
+    one's directional vote (long=+1 / short=-1) by their skill pnl, so the
+    signal is "what do the good traders lean" -- decoupled from notional size
+    (cf. MEMORY: whale = skill, not size). skill_bias in [-1, +1].
+    """
+    agg: dict[str, dict] = {}
+    for w in whales:
+        skill = w.get("skillPnl", 0.0)
+        if skill <= MIN_SKILL_PNL:
+            continue
+        for coin, p in w["positions"].items():
+            szi = fnum(p["szi"])
+            if szi == 0:
+                continue
+            a = agg.setdefault(
+                coin, {"signed_w": 0.0, "total_w": 0.0, "long_n": 0, "short_n": 0}
+            )
+            direction = 1.0 if szi > 0 else -1.0
+            a["signed_w"] += direction * skill
+            a["total_w"] += skill
+            if szi > 0:
+                a["long_n"] += 1
+            else:
+                a["short_n"] += 1
+    for a in agg.values():
+        b = a["signed_w"] / a["total_w"] if a["total_w"] else 0.0
+        a["skill_bias"] = b
+        a["lean"] = "LONG" if b > BIAS_THRESHOLD else "SHORT" if b < -BIAS_THRESHOLD else "NEUTRAL"
+    return agg
+
+
+def print_skill_sentiment(agg: dict[str, dict], n_skilled: int, n_total: int) -> None:
+    if not agg:
+        return
+    print(f"\nskill-weighted positioning ({n_skilled}/{n_total} whales with "
+          f"{SKILL_WINDOW} pnl > ${MIN_SKILL_PNL:,.0f}, vote weighted by pnl):\n")
+    print(f"  {'COIN':4s}  {'SKILL_BIAS':>10s}  {'LEAN':<8s} skilled wallets")
+    for coin in sorted(agg, key=lambda c: -abs(agg[c]["skill_bias"])):
+        a = agg[coin]
+        print(f"  {coin:4s}  {a['skill_bias']:>+10.2f}  {a['lean']:<8s} "
+              f"{a['long_n']}L/{a['short_n']}S")
+
+
 def coin_positions(chs: dict) -> dict[str, dict]:
     """coin -> position dict, restricted to COINS and nonzero size."""
     out = {}
@@ -117,6 +176,7 @@ def scan_address(hl: HyperliquidInfo, row: dict) -> dict | None:
         "addr": addr,
         "accountValue": fnum(chs["marginSummary"]["accountValue"]),
         "coinNotional": notional,
+        "skillPnl": window_pnl(row),
         "positions": pos,
     }
 
@@ -154,6 +214,8 @@ def main() -> None:
                   f"lev={p['leverage']['value']}x  liqPx={p.get('liquidationPx')}")
 
     print_sentiment(aggregate_sentiment(whales))
+    n_skilled = sum(1 for w in whales if w.get("skillPnl", 0.0) > MIN_SKILL_PNL)
+    print_skill_sentiment(skill_weighted_sentiment(whales), n_skilled, len(whales))
 
 
 if __name__ == "__main__":
