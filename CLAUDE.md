@@ -4,10 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A research project to investigate **whale activity on Hyperliquid (HYPE) — the HyperCore
-perpetuals exchange**. The current phase is exploratory: figure out what data is reachable and
-how to define "whale". Output format (CLI / alerts / dashboard) is intentionally undecided —
-expect experiment scripts, not a finished product.
+A research project on **Hyperliquid (HYPE) — the HyperCore perpetuals exchange**.
+**Focus (pivoted 2026-07-02): find *skilled* traders regardless of size, and analyze HOW they
+trade** — style/method fingerprinting, explicitly *not* simple copy-trading. The whale-cohort
+scripts predate the pivot and still run (hourly cron), but `skilled.py` is the current surface.
+Output format (CLI / alerts / dashboard) is intentionally undecided — expect experiment
+scripts, not a finished product.
 
 ## Commands
 
@@ -16,6 +18,8 @@ python3 explore.py     # sample every data source: market OI, leaderboard shape,
 python3 whales.py      # select whales by total account value, print their live positions
 python3 whales_coin.py # rank whales by per-coin exposure (default BTC+ETH) -- the current focus
 python3 whales_skill.py # real skill metrics from fills; --persistence tests if skill persists
+python3 skilled.py     # THE CURRENT FOCUS: size-agnostic skilled-trader finder + style fingerprints
+python3 skilled.py --addr 0x…  # deep style report for one address
 ```
 
 No dependencies to install — scripts use only the Python 3 stdlib (`urllib`, `json`).
@@ -44,6 +48,15 @@ The Hyperliquid Info API needs **no authentication**; everything runs against th
   `max_age_sec=0` to force a refresh. Writes are validated + atomic (tmp file + rename), and a
   failed refresh falls back to the stale cache instead of raising — the hourly cron must not die
   on one bad download.
+- **`skilled.py`** — **the current focus**: size-agnostic skilled-trader finder + style analysis.
+  Funnels the full leaderboard via three routes (top month-pnl / week-pnl / month-roi with a volume
+  floor — the roi route admits small accounts), verifies skill from fills (closes/span/net/PF
+  knobs), then fingerprints each survivor's *method*: flat-to-flat round-trip hold time,
+  maker/taker share, coin concentration, long/short lean, clip size → archetype tag
+  (`swing/maker/BTC-spec/long`). First-run finding: the top of the PF ranking is mostly
+  *market makers in thin markets* (unfollowable by design); the directional minority has
+  recognizable scalper/swing/position shapes — see `notes/skilled_findings.md`. Lean labels are
+  only meaningful when maker% is low.
 - **`whales_skill.py`**: *real* per-whale performance from `user_fills` (win rate, profit factor,
   net-of-fees PnL, equity curve, max drawdown) instead of the leaderboard pnl proxy; `--persistence`
   split-half-tests whether skill persists (first reading: yes, and fills metrics beat the proxy
