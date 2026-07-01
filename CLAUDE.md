@@ -40,7 +40,13 @@ The Hyperliquid Info API needs **no authentication**; everything runs against th
   raise `SCAN_TOP_N` to widen the net.
 - **`data/`**: gitignored cache. The leaderboard is ~32MB; `client.leaderboard()` caches it to
   `data/leaderboard.json` and refetches only when older than `max_age_sec` (default 1h). Pass
-  `max_age_sec=0` to force a refresh.
+  `max_age_sec=0` to force a refresh. Writes are validated + atomic (tmp file + rename), and a
+  failed refresh falls back to the stale cache instead of raising — the hourly cron must not die
+  on one bad download.
+- **`whales_track.py`**: hourly cron appends one snapshot (skill/notional bias per coin + mark
+  prices + `n_failed` fetch errors) to `data/whale_track.jsonl`; `--analyze` tests whether the
+  signal predicts **forward** returns (hit-rate vs a const-guess base rate, median-gap spacing
+  guard against missed cron runs). See `notes/review_2026-07-02.md` for the schema/analysis details.
 - **`btc/` + `btc_flows.py`**: a *second data domain* — on-chain Bitcoin base-chain flows, not
   Hyperliquid. `btc/client.py` (`Esplora`) reads the public mempool.space/blockstream Esplora API
   (no auth, values in **satoshis**; `address_txs_paged` walks history for 芋づる tracing);

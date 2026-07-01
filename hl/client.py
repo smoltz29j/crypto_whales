@@ -9,6 +9,7 @@ Docs: https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-en
 from __future__ import annotations
 
 import json
+import sys
 import time
 import urllib.request
 from pathlib import Path
@@ -63,10 +64,23 @@ class HyperliquidInfo:
         DATA_DIR.mkdir(exist_ok=True)
         cache = DATA_DIR / "leaderboard.json"
         fresh = cache.exists() and (time.time() - cache.stat().st_mtime) < max_age_sec
+        d = None
         if not fresh:
-            with urllib.request.urlopen(LEADERBOARD_URL, timeout=120) as r:
-                cache.write_bytes(r.read())
-        d = json.loads(cache.read_text())
+            try:
+                with urllib.request.urlopen(LEADERBOARD_URL, timeout=120) as r:
+                    raw = r.read()
+                d = json.loads(raw)  # validate before replacing the cache
+                tmp = cache.with_name(cache.name + ".tmp")
+                tmp.write_bytes(raw)
+                tmp.replace(cache)  # atomic: a truncated download never poisons the cache
+            except Exception as e:  # noqa: BLE001
+                if not cache.exists():
+                    raise
+                d = None
+                print(f"leaderboard refresh failed ({e!r}); using stale cache",
+                      file=sys.stderr)
+        if d is None:
+            d = json.loads(cache.read_text())
         return d["leaderboardRows"] if isinstance(d, dict) else d
 
     # --- per-account -----------------------------------------------------

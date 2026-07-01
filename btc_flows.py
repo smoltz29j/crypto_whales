@@ -69,11 +69,22 @@ def _counterparties(tx: dict, addr: str, outflow: bool, labels: dict[str, str]) 
     return sorted(agg.items(), key=lambda kv: -kv[1])
 
 
+def _watch_txs(hl: Esplora, addr: str, since_ms: int | None) -> list[dict]:
+    """Txs to scan for an address. Without a window: the recent ~50. With one:
+    mempool txs + paginated confirmed history back to the window start — a busy
+    hot wallet's last 50 txs can span minutes, silently under-reporting a
+    24h window otherwise."""
+    if since_ms is None:
+        return hl.address_txs(addr)
+    mempool = [t for t in hl.address_txs(addr) if not t.get("status", {}).get("confirmed")]
+    return mempool + _txs_since(hl, addr, since_ms)
+
+
 def collect_movements(hl: Esplora, min_btc: float, since_ms: int | None):
     labels = label_map()
     moves = []
     for addr, entity, category in watched_addresses():
-        for tx in hl.address_txs(addr):
+        for tx in _watch_txs(hl, addr, since_ms):
             st = tx.get("status", {})
             t_ms = (st.get("block_time") or int(time.time())) * 1000
             if since_ms is not None and t_ms < since_ms:

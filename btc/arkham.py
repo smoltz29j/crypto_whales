@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any
@@ -61,7 +62,7 @@ class Arkham:
             try:
                 with urllib.request.urlopen(req, timeout=self.timeout) as r:
                     return json.load(r)
-            except urllib.error.HTTPError as e:  # type: ignore[attr-defined]
+            except urllib.error.HTTPError as e:
                 # 429 = rate limited (heavy endpoint is 1 req/s) -> back off and retry
                 if e.code == 429 and attempt < self.retries:
                     time.sleep(2 ** attempt)

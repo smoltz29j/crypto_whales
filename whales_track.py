@@ -48,7 +48,8 @@ def mark_prices(hl: HyperliquidInfo, coins) -> dict[str, float]:
 
 def snapshot(hl: HyperliquidInfo) -> dict:
     """One time-series point: prices + skilled/notional bias per coin."""
-    whales = wc.scan_whales(hl, progress=True)
+    stats: dict = {}
+    whales = wc.scan_whales(hl, progress=True, stats=stats)
     skill = wc.skill_weighted_sentiment(whales)
     ntl = wc.aggregate_sentiment(whales)
     prices = mark_prices(hl, set(RATIO_COINS))
@@ -57,6 +58,7 @@ def snapshot(hl: HyperliquidInfo) -> dict:
         "time_ms": int(time.time() * 1000),
         "n_whales": len(whales),
         "n_skilled": n_skilled,
+        "n_failed": stats.get("n_failed", 0),
         "prices": prices,
         "skill_bias": {c: skill.get(c, {}).get("skill_bias", 0.0) for c in RATIO_COINS},
         "ntl_bias": {c: ntl.get(c, {}).get("net_bias", 0.0) for c in RATIO_COINS},
@@ -86,6 +88,20 @@ def _pearson(xs: list[float], ys: list[float]) -> float:
     return cov / (vx * vy) ** 0.5 if vx and vy else 0.0
 
 
+def _median(xs: list[float]) -> float:
+    s = sorted(xs)
+    n = len(s)
+    return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2
+
+
+def _base_rate(fwd_rets: list[float]) -> float:
+    """Best constant-guess hit-rate (always-up or always-down, whichever wins).
+    A hit-rate is only informative above this."""
+    ups = sum(1 for r in fwd_rets if r > 0)
+    downs = sum(1 for r in fwd_rets if r < 0)
+    return max(ups, downs) / (ups + downs) if (ups + downs) else 0.0
+
+
 def _hit_rate(signals: list[float], fwd_rets: list[float]) -> tuple[int, int]:
     """(hits, n): hit = sign(signal) matches sign(forward return); skips zeros."""
     hits = n = 0
@@ -109,13 +125,25 @@ def analyze(series: list[dict], horizon: int = HORIZON_STEPS) -> None:
     def px(s, c):
         return s["prices"].get(c, 0.0)
 
-    print(f"analyzing {len(series)} snapshots, horizon = {horizon} step(s), "
-          f"forward (lagged) returns:\n")
+    # A "horizon" is measured in *steps*, so it only means a fixed time span if
+    # snapshots are evenly spaced. Missed cron runs create 2-3h gaps whose
+    # returns aren't comparable to 1h ones — drop pairs far from the median gap.
+    dts = [series[t + horizon]["time_ms"] - series[t]["time_ms"]
+           for t in range(len(series) - horizon)]
+    med = _median(dts)
+    keep = [t for t, dt in enumerate(dts) if 0.5 * med <= dt <= 1.5 * med]
+
+    print(f"analyzing {len(series)} snapshots, horizon = {horizon} step(s) "
+          f"(median gap {med / 3.6e6:.2f}h), forward (lagged) returns:")
+    if len(keep) < len(dts):
+        print(f"  note: dropped {len(dts) - len(keep)} pair(s) with irregular "
+              f"spacing (outside 0.5-1.5x the median gap)")
+    print()
 
     # Per-coin: skill_bias(t) vs that coin's forward return.
     for c in RATIO_COINS:
         sig, fwd = [], []
-        for t in range(len(series) - horizon):
+        for t in keep:
             p0, p1 = px(series[t], c), px(series[t + horizon], c)
             if p0 <= 0 or p1 <= 0:
                 continue
@@ -124,11 +152,12 @@ def analyze(series: list[dict], horizon: int = HORIZON_STEPS) -> None:
         hits, n = _hit_rate(sig, fwd)
         corr = _pearson(sig, fwd)
         hr = f"{hits}/{n} ({hits / n:.0%})" if n else "n/a"
-        print(f"  {c:4s} skill_bias -> fwd return : corr={corr:>+5.2f}  hit-rate={hr}")
+        print(f"  {c:4s} skill_bias -> fwd return : corr={corr:>+5.2f}  "
+              f"hit-rate={hr}  const-guess base={_base_rate(fwd):.0%}")
 
     # Ratio (the pairs/dominance trade): skill_bias[a] - skill_bias[b] vs fwd ratio return.
     sig, fwd = [], []
-    for t in range(len(series) - horizon):
+    for t in keep:
         r0a, r0b = px(series[t], a), px(series[t], b)
         r1a, r1b = px(series[t + horizon], a), px(series[t + horizon], b)
         if min(r0a, r0b, r1a, r1b) <= 0:
@@ -140,7 +169,7 @@ def analyze(series: list[dict], horizon: int = HORIZON_STEPS) -> None:
     corr = _pearson(sig, fwd)
     hr = f"{hits}/{n} ({hits / n:.0%})" if n else "n/a"
     print(f"\n  ({a}-{b}) skill_bias spread -> fwd {a}/{b} ratio return : "
-          f"corr={corr:>+5.2f}  hit-rate={hr}")
+          f"corr={corr:>+5.2f}  hit-rate={hr}  const-guess base={_base_rate(fwd):.0%}")
     print(f"  (positive spread = lean long {a} / short {b})")
 
 
@@ -167,11 +196,11 @@ def main(argv: list[str]) -> None:
     snap = snapshot(hl)
     append_snapshot(snap)
     a, b = RATIO_COINS
-    ratio = snap["prices"].get(a, 0) / snap["prices"].get(b, 1)
+    pa, pb = snap["prices"].get(a, 0.0), snap["prices"].get(b, 0.0)
+    ratio = pa / pb if pb else 0.0
     print(f"\nsnapshot @ {time.strftime('%Y-%m-%d %H:%M')}  "
           f"({snap['n_skilled']}/{snap['n_whales']} skilled whales)")
-    print(f"  {a}=${snap['prices'].get(a, 0):,.0f}  {b}=${snap['prices'].get(b, 0):,.0f}  "
-          f"{a}/{b} ratio={ratio:.2f}")
+    print(f"  {a}=${pa:,.0f}  {b}=${pb:,.0f}  {a}/{b} ratio={ratio:.2f}")
     print(f"  skill_bias: {a} {snap['skill_bias'][a]:+.2f}  {b} {snap['skill_bias'][b]:+.2f}")
     print(f"  appended to {SERIES_PATH}  (total {len(load_series())} snapshots)")
     print(f"  run with --analyze once several snapshots accumulate.")

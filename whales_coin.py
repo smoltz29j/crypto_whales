@@ -10,6 +10,7 @@ Tweak the knobs below and rerun.
 """
 from __future__ import annotations
 
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from hl import HyperliquidInfo
@@ -161,11 +162,10 @@ def coin_positions(chs: dict) -> dict[str, dict]:
 
 
 def scan_address(hl: HyperliquidInfo, row: dict) -> dict | None:
+    """None = scanned but not a whale. Fetch errors propagate — scan_whales
+    counts them so a time series can tell 'fewer whales' from 'more errors'."""
     addr = row["ethAddress"]
-    try:
-        chs = hl.clearinghouse_state(addr)
-    except Exception:
-        return None
+    chs = hl.clearinghouse_state(addr)
     pos = coin_positions(chs)
     if not pos:
         return None
@@ -181,9 +181,13 @@ def scan_address(hl: HyperliquidInfo, row: dict) -> dict | None:
     }
 
 
-def scan_whales(hl: HyperliquidInfo, progress: bool = False) -> list[dict]:
+def scan_whales(hl: HyperliquidInfo, progress: bool = False,
+                stats: dict | None = None) -> list[dict]:
     """Scan the top SCAN_TOP_N accounts and return those that are COINS whales,
     sorted by coin notional. Reused by main() and whales_track.py.
+
+    Pass a `stats` dict to receive n_scanned/n_failed — a snapshot with many
+    failed fetches is a degraded reading, not a smaller whale cohort.
     """
     lb = hl.leaderboard()
     lb.sort(key=lambda r: -fnum(r["accountValue"]))
@@ -192,14 +196,25 @@ def scan_whales(hl: HyperliquidInfo, progress: bool = False) -> list[dict]:
         print(f"scanning top {len(candidates):,} accounts for {sorted(COINS)} "
               f"positions >= ${MIN_COIN_NOTIONAL:,} ...")
     whales: list[dict] = []
+    n_failed = 0
     with ThreadPoolExecutor(max_workers=WORKERS) as ex:
         futs = [ex.submit(scan_address, hl, r) for r in candidates]
         for i, fut in enumerate(as_completed(futs), 1):
             if progress and i % 250 == 0:
                 print(f"  ...{i}/{len(candidates)} scanned, {len(whales)} whales so far")
-            res = fut.result()
+            try:
+                res = fut.result()
+            except Exception:
+                n_failed += 1
+                continue
             if res:
                 whales.append(res)
+    if n_failed:
+        print(f"warning: {n_failed}/{len(candidates)} account fetches failed "
+              f"(after retries); cohort is incomplete", file=sys.stderr)
+    if stats is not None:
+        stats["n_scanned"] = len(candidates)
+        stats["n_failed"] = n_failed
     whales.sort(key=lambda w: -w["coinNotional"])
     return whales
 
