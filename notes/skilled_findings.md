@@ -60,3 +60,28 @@ Among verified accounts that *do* complete round trips:
    funnel in 2–4 weeks and measure survivor overlap + out-of-window PnL
    (`data/fills_cache/` is the seed).
 4. `--addr` deep report exists for manual study of any single account.
+
+## Addendum — BTC-only restriction (2026-07-02, same day)
+
+User decision: restrict the analysis to **BTC only**. `skilled.py` gained a
+`COINS = {"BTC"}` knob — skill is verified and fingerprinted on BTC fills
+alone (recomputed metrics, not the all-coin ones), and the focus tag now
+records BTC's share of the trader's total perp activity:
+`BTC-only` (>90%), `BTC-main` (>50%), `BTC-side` (<50%).
+
+Run: **371 candidates → 43 verified skilled in BTC.**
+
+- The maker/inventory cluster still tops the PF board (as expected), but is
+  much smaller in BTC than in the thin niche markets — BTC's book is deep, so
+  pure spread capture is harder. The biggest verified cluster is now
+  **intraday takers with BTC as main or side book** (holds 0.9–18h).
+- Small accounts with real BTC edges do surface — e.g. `$5.5K`, `$11K`, `$29K`
+  accounts with PF 3–33 over weeks — the ROI funnel route doing its job.
+- Several `BTC-side` verified traders are *primarily* trading something else
+  and dipping into BTC profitably; whether their BTC trades are alpha or
+  hedges of the other book is a per-account question (`--addr` report).
+- Lean caveat unchanged: "short" tags on maker-heavy rows are inventory, not
+  view.
+
+Next: per-trip dump for the ~30 directional BTC traders (entry/exit px, hold,
+pnl, time-of-day) to look for repeated setups.

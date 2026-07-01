@@ -18,7 +18,7 @@ python3 explore.py     # sample every data source: market OI, leaderboard shape,
 python3 whales.py      # select whales by total account value, print their live positions
 python3 whales_coin.py # rank whales by per-coin exposure (default BTC+ETH) -- the current focus
 python3 whales_skill.py # real skill metrics from fills; --persistence tests if skill persists
-python3 skilled.py     # THE CURRENT FOCUS: size-agnostic skilled-trader finder + style fingerprints
+python3 skilled.py     # THE CURRENT FOCUS: size-agnostic skilled-BTC-trader finder + style fingerprints
 python3 skilled.py --addr 0x…  # deep style report for one address
 ```
 
@@ -48,15 +48,15 @@ The Hyperliquid Info API needs **no authentication**; everything runs against th
   `max_age_sec=0` to force a refresh. Writes are validated + atomic (tmp file + rename), and a
   failed refresh falls back to the stale cache instead of raising — the hourly cron must not die
   on one bad download.
-- **`skilled.py`** — **the current focus**: size-agnostic skilled-trader finder + style analysis.
-  Funnels the full leaderboard via three routes (top month-pnl / week-pnl / month-roi with a volume
-  floor — the roi route admits small accounts), verifies skill from fills (closes/span/net/PF
+- **`skilled.py`** — **the current focus**: size-agnostic skilled-trader finder + style analysis,
+  **restricted to BTC** (`COINS = {"BTC"}`; set to `None` for all coins). Funnels the full
+  leaderboard via three routes (top month-pnl / week-pnl / month-roi with a volume floor — the roi
+  route admits small accounts), verifies skill from the COINS-restricted fills (closes/span/net/PF
   knobs), then fingerprints each survivor's *method*: flat-to-flat round-trip hold time,
-  maker/taker share, coin concentration, long/short lean, clip size → archetype tag
-  (`swing/maker/BTC-spec/long`). First-run finding: the top of the PF ranking is mostly
-  *market makers in thin markets* (unfollowable by design); the directional minority has
-  recognizable scalper/swing/position shapes — see `notes/skilled_findings.md`. Lean labels are
-  only meaningful when maker% is low.
+  maker/taker share, BTC-share-of-book (`BTC-only`/`-main`/`-side`), long/short lean, clip size →
+  archetype tag (`swing/maker/BTC-main/short`). Findings so far (`notes/skilled_findings.md`):
+  all-coin top PF is mostly *thin-market makers* (unfollowable by design); in deep-book BTC the
+  biggest verified cluster is intraday takers. Lean labels are only meaningful when maker% is low.
 - **`whales_skill.py`**: *real* per-whale performance from `user_fills` (win rate, profit factor,
   net-of-fees PnL, equity curve, max drawdown) instead of the leaderboard pnl proxy; `--persistence`
   split-half-tests whether skill persists (first reading: yes, and fills metrics beat the proxy

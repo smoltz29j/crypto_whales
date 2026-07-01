@@ -4,7 +4,9 @@
 Direction pivot (2026-07-02): not whale-watching, and not copy-trading. The
 question is "who is actually good, and what is their method?" Size is not a
 selection criterion; a $30k account with a real edge matters more than a $30M
-hedger.
+hedger. Scope restriction (same day): COINS = {"BTC"} — skill is verified and
+fingerprinted on BTC fills only; the coin_share tag records whether BTC is
+the trader's whole book or a side dish.
 
 Funnel:
   1. Candidates from the full leaderboard by three routes: top month PnL,
@@ -36,6 +38,7 @@ import whales_coin as wc
 import whales_skill as ws
 
 # --- knobs (edit & rerun) ------------------------------------------------
+COINS = {"BTC"}           # verify skill + fingerprint on these coins only (None = all)
 TOP_MONTH_PNL = 150       # candidate route 1: biggest month pnl
 TOP_WEEK_PNL = 100        # candidate route 2: biggest week pnl (recency)
 TOP_MONTH_ROI = 150       # candidate route 3: best month roi (size-agnostic)
@@ -75,6 +78,13 @@ def candidates(lb: list[dict]) -> list[dict]:
                 seen.add(r["ethAddress"])
                 out.append(r)
     return out
+
+
+def coin_fills(fills: list[dict]) -> list[dict]:
+    """The fills the analysis runs on (COINS restriction; None = everything)."""
+    if not COINS:
+        return fills
+    return [f for f in fills if f["coin"] in COINS]
 
 
 # --- style fingerprint --------------------------------------------------------
@@ -154,8 +164,16 @@ def archetype(st: dict) -> str:
             else "swing" if h < 168 else "position") if st["n_trips"] else "hodl?"
     exe = ("maker" if st["maker_share"] > 0.6
            else "taker" if st["maker_share"] < 0.2 else "mixed")
-    focus = (f"{st['top_coin']}-spec" if st["top_coin_share"] > 0.7
-             else "multi" if st["n_coins"] >= 5 else "few-coin")
+    if COINS:
+        # focus = how much of the trader's *total* perp activity the target
+        # coins are: specialist vs side dish.
+        share = st.get("coin_share", 1.0)
+        tag = "+".join(sorted(COINS))
+        focus = (f"{tag}-only" if share > 0.9 else f"{tag}-main" if share > 0.5
+                 else f"{tag}-side")
+    else:
+        focus = (f"{st['top_coin']}-spec" if st["top_coin_share"] > 0.7
+                 else "multi" if st["n_coins"] >= 5 else "few-coin")
     lean = ("long" if st["long_share"] > 0.7
             else "short" if st["long_share"] < 0.3 else "both")
     return f"{hold}/{exe}/{focus}/{lean}"
@@ -164,12 +182,19 @@ def archetype(st: dict) -> str:
 # --- output ------------------------------------------------------------------
 
 def verified_skilled(rows: list[dict]) -> list[dict]:
+    """Verify + fingerprint on the COINS-restricted fills; metrics are
+    recomputed on that subset (ws.collect computed them over all perp fills)."""
     out = []
     for r in rows:
-        m = r["metrics"]
+        cf = coin_fills(r["fills"])
+        if not cf:
+            continue
+        m = ws.fill_metrics(cf)
         if (m["n_realized"] >= MIN_REALIZED_FILLS and m["span_days"] >= MIN_SPAN_DAYS
                 and m["net_pnl"] > 0 and m["profit_factor"] >= MIN_PF):
-            r["style"] = style(r["fills"])
+            r["metrics"] = m
+            r["style"] = style(cf)
+            r["style"]["coin_share"] = len(cf) / len(r["fills"])
             r["archetype"] = archetype(r["style"])
             out.append(r)
     out.sort(key=lambda r: -min(r["metrics"]["profit_factor"], 50.0))
@@ -177,8 +202,9 @@ def verified_skilled(rows: list[dict]) -> list[dict]:
 
 
 def print_skilled(skilled: list[dict], n_candidates: int) -> None:
-    print(f"\nverified skilled traders: {len(skilled)} of {n_candidates} candidates "
-          f"(>= {MIN_REALIZED_FILLS} closes over >= {MIN_SPAN_DAYS:.0f}d, "
+    scope = f" in {'+'.join(sorted(COINS))}" if COINS else ""
+    print(f"\nverified skilled traders{scope}: {len(skilled)} of {n_candidates} "
+          f"candidates (>= {MIN_REALIZED_FILLS} closes over >= {MIN_SPAN_DAYS:.0f}d, "
           f"net > 0, PF >= {MIN_PF}); top {min(TOP_N, len(skilled))} by PF:\n")
     print(f"  {'address':<12} {'acctVal':>8} {'days':>5} {'f/day':>6} {'PF':>6} "
           f"{'net':>9} {'hold':>7} {'tripWR':>6} {'mkr%':>5} {'lng%':>5} "
@@ -204,11 +230,15 @@ def print_skilled(skilled: list[dict], n_candidates: int) -> None:
 
 
 def report_one(hl: HyperliquidInfo, addr: str) -> None:
-    fills = ws.perp_fills(ws.fetch_fills(hl, addr))
+    all_fills = ws.perp_fills(ws.fetch_fills(hl, addr))
+    fills = coin_fills(all_fills)
     if not fills:
-        print(f"{addr}: no perp fills in the recent window")
+        scope = f"{'+'.join(sorted(COINS))} " if COINS else ""
+        print(f"{addr}: no {scope}perp fills in the recent window "
+              f"({len(all_fills)} perp fills total)")
         return
     m, st = ws.fill_metrics(fills), style(fills)
+    st["coin_share"] = len(fills) / len(all_fills)
     pf = f"{m['profit_factor']:.2f}" if m["profit_factor"] != float("inf") else "inf"
     print(f"\n{addr}\n  archetype: {archetype(st)}")
     print(f"  window: {m['n_fills']} fills / {m['span_days']:.1f} days "
@@ -221,11 +251,13 @@ def report_one(hl: HyperliquidInfo, addr: str) -> None:
     print(f"  execution: maker {st['maker_share']:.0%}, median clip "
           f"{wc.fmt_usd(st['med_size'])}, long share of opens {st['long_share']:.0%}")
     by_coin: dict[str, dict] = defaultdict(lambda: {"n": 0, "pnl": 0.0})
-    for f in fills:
+    for f in all_fills:                    # context: everything they trade
         c = by_coin[f["coin"]]
         c["n"] += 1
         c["pnl"] += wc.fnum(f.get("closedPnl")) - wc.fnum(f.get("fee"))
-    print(f"  coins ({st['n_coins']}):")
+    print(f"  coins across all perp fills ({len(by_coin)}; analysis restricted "
+          f"to {'+'.join(sorted(COINS)) if COINS else 'all'}, "
+          f"{st['coin_share']:.0%} of fills):")
     for coin, c in sorted(by_coin.items(), key=lambda kv: -kv[1]["pnl"])[:8]:
         print(f"    {coin:<8} {c['n']:>5} fills  net {wc.fmt_usd(c['pnl']):>9}")
 
