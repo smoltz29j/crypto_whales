@@ -12,9 +12,10 @@ This deliberately avoids the reference backtest's flaw of correlating against th
 (see notes/reference_repos.md).
 
 Usage:
-  python3 whales_track.py            # take one snapshot, append to the series
-  python3 whales_track.py --analyze  # analyze the accumulated series
-  python3 whales_track.py --show     # print the raw series
+  python3 whales_track.py                        # take one snapshot, append to the series
+  python3 whales_track.py --analyze              # analyze the accumulated series
+  python3 whales_track.py --analyze --horizon 4  # ... at a specific horizon (or "1,4,24")
+  python3 whales_track.py --show                 # print the raw series
 
 Build a series by running the snapshot on a schedule (cron / `/loop`), e.g. hourly.
 """
@@ -185,9 +186,27 @@ def show(series: list[dict]) -> None:
               f"{ratio:>7.2f} {s['skill_bias'][a]:>+7.2f} {s['skill_bias'][b]:>+7.2f}")
 
 
+def _horizons(argv: list[str]) -> list[int]:
+    """Parse --horizon N or --horizon N,M,... (defaults to [HORIZON_STEPS])."""
+    if "--horizon" not in argv:
+        return [HORIZON_STEPS]
+    try:
+        raw = argv[argv.index("--horizon") + 1]
+        hs = [int(x) for x in raw.split(",")]
+        if not hs or any(h < 1 for h in hs):
+            raise ValueError(raw)
+        return hs
+    except (IndexError, ValueError):
+        sys.exit("--horizon needs a positive step count, e.g. --horizon 4 or --horizon 1,4,24")
+
+
 def main(argv: list[str]) -> None:
     if "--analyze" in argv:
-        analyze(load_series())
+        series = load_series()
+        for i, h in enumerate(_horizons(argv)):
+            if i:
+                print()
+            analyze(series, horizon=h)
         return
     if "--show" in argv:
         show(load_series())
