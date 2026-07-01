@@ -41,6 +41,17 @@ The Hyperliquid Info API needs **no authentication**; everything runs against th
 - **`data/`**: gitignored cache. The leaderboard is ~32MB; `client.leaderboard()` caches it to
   `data/leaderboard.json` and refetches only when older than `max_age_sec` (default 1h). Pass
   `max_age_sec=0` to force a refresh.
+- **`btc/` + `btc_flows.py`**: a *second data domain* — on-chain Bitcoin base-chain flows, not
+  Hyperliquid. `btc/client.py` (`Esplora`) reads the public mempool.space/blockstream Esplora API
+  (no auth, values in **satoshis**; `address_txs_paged` walks history for 芋づる tracing);
+  `btc/watchlist.py` is the curated entity→address layer (balance-verified Binance/Bitfinex
+  cold+hot); `btc_flows.py` flags large IN/OUT balance moves per watched entity with counterparty
+  labels. Attribution — not visibility — is the hard part. Two label sources feed it:
+  `btc/labels_import.py` pulls **free, no-key** GraphSense tagpacks (~336k BTC address→entity
+  labels: every major exchange's published wallets + one ETF) into `data/btc_labels.json`, overlaid
+  under the curated watchlist for counterparty naming; `btc/arkham.py` + `arkham_flows.py` is the
+  **labeled-API** path (needs `ARKHAM_API_KEY`, free tier) for custodial/omnibus/clustered entities
+  the free data can't attribute (Coinbase, BlackRock/IBIT, MicroStrategy). See `notes/btc_onchain.md`.
 
 ## Data model (what HyperCore actually exposes)
 
