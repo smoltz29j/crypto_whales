@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import sys
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,12 @@ class HyperliquidInfo:
             try:
                 with urllib.request.urlopen(req, timeout=self.timeout) as r:
                     return json.load(r)
+            except urllib.error.HTTPError as e:
+                last = e
+                if attempt < self.retries:
+                    # 429 = rate-limit budget exhausted (burst scans hit this);
+                    # back off long enough for the budget to replenish.
+                    time.sleep(2.0 ** (attempt + 1) if e.code == 429 else 0.5 * (attempt + 1))
             except Exception as e:  # noqa: BLE001 - retry any transient failure
                 last = e
                 if attempt < self.retries:

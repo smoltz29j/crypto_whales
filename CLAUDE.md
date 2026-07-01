@@ -15,6 +15,7 @@ expect experiment scripts, not a finished product.
 python3 explore.py     # sample every data source: market OI, leaderboard shape, one whale's state
 python3 whales.py      # select whales by total account value, print their live positions
 python3 whales_coin.py # rank whales by per-coin exposure (default BTC+ETH) -- the current focus
+python3 whales_skill.py # real skill metrics from fills; --persistence tests if skill persists
 ```
 
 No dependencies to install — scripts use only the Python 3 stdlib (`urllib`, `json`).
@@ -43,6 +44,11 @@ The Hyperliquid Info API needs **no authentication**; everything runs against th
   `max_age_sec=0` to force a refresh. Writes are validated + atomic (tmp file + rename), and a
   failed refresh falls back to the stale cache instead of raising — the hourly cron must not die
   on one bad download.
+- **`whales_skill.py`**: *real* per-whale performance from `user_fills` (win rate, profit factor,
+  net-of-fees PnL, equity curve, max drawdown) instead of the leaderboard pnl proxy; `--persistence`
+  split-half-tests whether skill persists (first reading: yes, and fills metrics beat the proxy
+  +0.54..0.62 vs +0.22 Spearman — see `notes/skill_findings.md` for caveats). Fills are disk-cached
+  1h in `data/fills_cache/`; the client backs off on 429 (post-scan fills fetches drain rate budget).
 - **`whales_track.py`**: hourly cron appends one snapshot (skill/notional bias per coin + mark
   prices + `n_failed` fetch errors) to `data/whale_track.jsonl`; `--analyze` tests whether the
   signal predicts **forward** returns (hit-rate vs a const-guess base rate, median-gap spacing
