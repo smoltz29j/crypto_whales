@@ -61,6 +61,15 @@ class HyperliquidInfo:
         """coin -> mid price (str)."""
         return self._post({"type": "allMids"})
 
+    def candles(self, coin: str, interval: str, start_ms: int, end_ms: int) -> list[dict]:
+        """OHLCV candles in [start_ms, end_ms]: [{t, T, o, h, l, c, v, n}, ...]
+        (numbers as strings, t = open time ms). Only the most recent ~5000
+        candles per interval exist server-side; older requests return nothing.
+        """
+        return self._post({"type": "candleSnapshot",
+                           "req": {"coin": coin, "interval": interval,
+                                   "startTime": int(start_ms), "endTime": int(end_ms)}})
+
     # --- whale discovery -------------------------------------------------
     def leaderboard(self, max_age_sec: float = 3600.0) -> list[dict]:
         """All ranked traders with accountValue + windowed pnl/roi/vlm.

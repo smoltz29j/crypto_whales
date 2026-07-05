@@ -20,6 +20,8 @@ python3 whales_coin.py # rank whales by per-coin exposure (default BTC+ETH) -- t
 python3 whales_skill.py # real skill metrics from fills; --persistence tests if skill persists
 python3 skilled.py     # THE CURRENT FOCUS: size-agnostic skilled-BTC-trader finder + style fingerprints
 python3 skilled.py --addr 0x…  # deep style report for one address
+python3 trips.py       # per-trip setup analysis of the directional skilled cluster
+python3 trips.py --addr 0x…    # per-trip listing for one address
 ```
 
 No dependencies to install — scripts use only the Python 3 stdlib (`urllib`, `json`).
@@ -57,6 +59,13 @@ The Hyperliquid Info API needs **no authentication**; everything runs against th
   archetype tag (`swing/maker/BTC-main/short`). Findings so far (`notes/skilled_findings.md`):
   all-coin top PF is mostly *thin-market makers* (unfollowable by design); in deep-book BTC the
   biggest verified cluster is intraday takers. Lean labels are only meaningful when maker% is low.
+- **`trips.py`**: the step after `skilled.py` — per-trip records for the *directional* skilled
+  cluster (>= `MIN_TRIPS` flat-to-flat round trips): entry/exit px, hold, adds, per-trip maker
+  share, pnl → `data/trips_btc.jsonl`, plus setup analysis against 1h candles
+  (`HyperliquidInfo.candles`): time-of-day, momentum-vs-fade (prior 4h move), pyramiding,
+  loss-cut speed. First reading (`notes/trips_findings.md`): the near-universal signature of
+  verified skill is *cut losses fast, let wins run* (16/16, median loss/win hold ratio 0.30);
+  entries are fades (~⅓ momentum-aligned), triggered by volatility, clustered at NY open.
 - **`whales_skill.py`**: *real* per-whale performance from `user_fills` (win rate, profit factor,
   net-of-fees PnL, equity curve, max drawdown) instead of the leaderboard pnl proxy; `--persistence`
   split-half-tests whether skill persists (first reading: yes, and fills metrics beat the proxy
