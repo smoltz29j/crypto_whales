@@ -91,6 +91,29 @@ shared regime), so p-values are somewhat optimistic; 3 win-rate contrasts
 were run (multiple comparisons); n = 16-17 traders is the effective sample
 for all cross-trader claims.
 
+## Addendum 2 — maximized population (2026-07-06, run just before session end)
+
+User direction: maximize n. Funnel widened 3x (833 candidates; 93 fills
+fetches failed on rate limits — worth a warm-cache rerun) + full-history
+`deep_fills` paging → **64 verified, 50 directional traders, 4,564 trips**
+(8x the first pass). `trips_stats.py` on the new population:
+
+- **① cut-losses-fast: confirmed decisively.** 41/46 traders (sign
+  p = 2.2e-8), Stouffer p ≈ 3e-35, median hold ratio 0.39, CI [0.29, 0.48]
+  (was [0.11, 0.51] — tighter, slightly higher). Robust to scratch exclusion.
+- **② fade edge: stays dead** (OR 1.05, p = 0.56) — now with ~3,400 readable
+  trips, convincingly zero.
+- **③ vol-trigger: RESOLVED — dead.** OR 1.02, p = 0.78. The first-pass
+  marginal p = 0.074 was noise; 4x the data killed it.
+- **④ pyramiding: flipped from dead to marginal** (OR 1.14, p = 0.076,
+  was 1.02/0.91). Unstable across populations → treat as no effect until it
+  survives a fresh sample.
+
+Bottom line unchanged and now much stronger: **exit discipline is the only
+statistically real edge marker in this cohort.** Still pending: control group
+(do losing traders also cut fast?), notes update of the main findings above,
+Word report v3 to the NAS.
+
 ## Caveats
 
 - **Survivorship by construction**: every trader here passed the skill filter,
