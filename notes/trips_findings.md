@@ -55,6 +55,42 @@ and a trough 03–08 UTC. Caveat: the 13–14U spike is partly two hyperactive
 accounts (62 of 112 entries); the per-trader `block` column is the honest view —
 top blocks vary (12-16U, 16-20U, 00-04U all appear).
 
+## Addendum — statistical treatment (2026-07-05, same day; `trips_stats.py`)
+
+Proper tests change the picture: **one finding survives decisively, two die.**
+
+**Finding 1 (cut losses fast) — SOLID.** Per-trader one-sided Mann-Whitney U
+(losing holds < winning holds), then combined across traders:
+- direction: 16/16 traders, exact sign test p = 1.5e-5;
+- Stouffer-combined z = −5.99, p ≈ 1e-9;
+- median hold ratio 0.29, cluster-bootstrap (resampling traders) 95% CI
+  [0.11, 0.51];
+- robust to excluding scratch trips (|price move| < 0.05%): 15/16,
+  sign p = 2.6e-4, CI [0.09, 0.45]. The one ratio≈1 trader (`0xdd17b90b..`)
+  is also the biggest net loser in the table — consistent, though anecdotal.
+
+**Finding 2 (fading wins, chasing loses) — DOES NOT survive.** The pooled
+wins-35%-aligned vs losses-43%-aligned gap was a composition artifact
+(Simpson's paradox from the two hyperactive accounts). Cochran-Mantel-Haenszel
+stratified *by trader*: OR_MH = 1.18, p = 0.40. What remains true is purely
+descriptive: these traders *choose* to fade (~61% of entries) — but there is
+no within-trader evidence that their fade entries win more than their chase
+entries.
+
+**Finding 3 addendum (vol-triggered entries win more) — marginal.** CMH
+OR_MH = 1.39, p = 0.074. Suggestive, not established; consistent with the
+per-trader median +9pp noted above.
+
+**Finding 3 (pyramiding wins more) — DEAD.** Pooled 49% vs 42% collapses to
+OR_MH = 1.02, p = 0.91 under trader stratification: entirely between-trader
+composition. Pyramiding remains a common *behavior* (49% of trips) but there
+is no evidence adds improve a given trader's odds.
+
+Test caveats: trips within a trader are not independent (time clustering,
+shared regime), so p-values are somewhat optimistic; 3 win-rate contrasts
+were run (multiple comparisons); n = 16-17 traders is the effective sample
+for all cross-trader claims.
+
 ## Caveats
 
 - **Survivorship by construction**: every trader here passed the skill filter,
