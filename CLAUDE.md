@@ -83,9 +83,17 @@ The Hyperliquid Info API needs **no authentication**; everything runs against th
   labels. Attribution — not visibility — is the hard part. Two label sources feed it:
   `btc/labels_import.py` pulls **free, no-key** GraphSense tagpacks (~336k BTC address→entity
   labels: every major exchange's published wallets + one ETF) into `data/btc_labels.json`, overlaid
-  under the curated watchlist for counterparty naming; `btc/arkham.py` + `arkham_flows.py` is the
-  **labeled-API** path (needs `ARKHAM_API_KEY`, free tier) for custodial/omnibus/clustered entities
-  the free data can't attribute (Coinbase, BlackRock/IBIT, MicroStrategy). See `notes/btc_onchain.md`.
+  under the curated watchlist for counterparty naming (cache keys are lowercased for lookups, but
+  the `addr` field keeps original case — **base58 addresses are case-sensitive**, only `addr` can
+  be used in API queries); `btc/expand.py` profiles labeled-but-unwatched wallets (one `/address`
+  call each, cached in `data/btc_profile.json`) and prints watchlist-ready entries — the 2026-07-05
+  pass grew the watchlist to ~759k BTC / 11 entities (Binance reserves, OKX, Crypto.com, Huobi,
+  Bybit); `btc_track.py` (hourly cron at :35) appends per-entity balance + confirmed IN/OUT/NET
+  since the previous snapshot to `data/btc_track.jsonl` with the BTC mark price, and `--analyze`
+  tests hot-wallet net flow against **forward** BTC returns (series clean from 2026-07-05);
+  `btc/arkham.py` + `arkham_flows.py` is the **labeled-API** path (needs `ARKHAM_API_KEY`, free
+  tier) for custodial/omnibus/clustered entities the free data can't attribute (Coinbase,
+  BlackRock/IBIT, MicroStrategy). See `notes/btc_onchain.md`.
 
 ## Data model (what HyperCore actually exposes)
 

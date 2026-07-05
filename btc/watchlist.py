@@ -61,6 +61,66 @@ WATCHLIST: dict[str, dict] = {
         "addresses": ["3JZq4atUahhuA9rLhXLMhhTo133J9rF97j"],
         "source": "GraphSense bitfinex pack (Bitfinex's own wallets.txt); flow-inferred then confirmed",
     },
+    # --- expansion 2026-07-05: btc/expand.py profiled every GraphSense-labeled
+    # address (one /address call each: balance + tx_count); only funded ones
+    # added, per seed policy. Zero-balance labeled wallets (kucoin, swissborg,
+    # deribit, Binance's old 1NDyJtNT… hot hub w/ 1.19M txs) were left out —
+    # rotated/drained addresses, verify again before ever adding.
+    "Binance (cold 2)": {
+        "category": "exchange_cold",
+        # GraphSense "binance reserve wallets BTC": ~174.9k + ~68.2k BTC, low
+        # tx counts (565 / 168) -> reserve vaults, like 34xp… above.
+        "addresses": ["3M219KR5vEneNb47ewrPfWyb5jQ2DjxRP6",
+                      "3LYJfcfHPXYJreMsASk2jkn69LWEYKzexb"],
+        "source": "GraphSense binance pack; balances verified live 2026-07-05",
+    },
+    "Crypto.com (hot)": {
+        "category": "exchange_hot",
+        # ~23.5k BTC and 96k txs -> active operational wallet.
+        "addresses": ["bc1qr4dl5wa7kl8yu792dceg9z5knl2gkn220lk7a9"],
+        "source": "GraphSense cryptocom pack; balance verified live 2026-07-05",
+    },
+    "OKX (cold)": {
+        "category": "exchange_cold",
+        # 15 funded vault tranches (round 3k/5k/6k/10k balances, tx_count <= 115),
+        # ~68.1k BTC total. GraphSense okex pack; 8 more labeled addrs were empty.
+        "addresses": ["1CY7fykRLWXeSbKB885Kr4KjQxmDdvW923",
+                      "16rF2zwSJ9goQ9fZfYoti5LsUqqegb5RnA",
+                      "1FY6RL8Ju9b6CGsHTK68yYEcnzUasufyCe",
+                      "1BsdDaJtgFZrLfzEXvh6cD4VhtHHSHhMea",
+                      "178E8tYZ5WJ6PpADdpmmZd67Se7uPhJCLX",
+                      "1Lj2mCPJYbbC2X6oYwV6sXnE8CZ4heK5UD",
+                      "1LnoZawVFFQihU8d8ntxLMpYheZUfyeVAK",
+                      "18QUDxjDZAqAJorr4jkSEWHUDGLBF9uRCc",
+                      "14kHu26yWkVD8qAnBfcFXHXxgquNoSpKum",
+                      "1DVTB9YKi4KNjyEbAHPp17T8R1Pp17nSmA",
+                      "1DnHx95d2t5URq2SYvVk6kxGryvTEbTnTs",
+                      "15Exz1BAVan4Eweagy1rcPJnfyc6KJ4GvL",
+                      "1M6E6vPaYsuCb34mDNS2aepu2aJyL6xBG4",
+                      "13jTtHxBPFwZkaCdm6BwJMMJkqvTpBZccw",
+                      "1CE8chGD6Nu8qjcDF2uR1wMKyoWb8Kyxwz"],
+        "source": "GraphSense okex pack; balances verified live 2026-07-05",
+    },
+    "Huobi (cold)": {
+        "category": "exchange_cold",
+        # GraphSense "huobi reserve wallets BTC": ~6.3k + ~1.0k + ~0.3k BTC.
+        "addresses": ["143gLvWYUojXaWZRrxquRKpVNTkhmr415B",
+                      "12qTdZHx6f77aQ74CPCZGSY47VaRwYjVD8",
+                      "14XKsv8tT6tt8P8mfDQZgNF8wtN5erNu5D"],
+        "source": "GraphSense huobi pack; balances verified live 2026-07-05",
+    },
+    "Bybit (cold)": {
+        "category": "exchange_cold",
+        # ~1.3k BTC, 267 txs.
+        "addresses": ["bc1q2qqqt87kh33s0er58akh7v9cwjgd83z5smh9rp"],
+        "source": "GraphSense bybit pack; balance verified live 2026-07-05",
+    },
+    "Bybit (hot)": {
+        "category": "exchange_hot",
+        # ~547 BTC but 445k txs -> operational hot wallet.
+        "addresses": ["1GrwDkr33gT6LuumniYjKEGjTLhsL5kmqC"],
+        "source": "GraphSense bybit pack; balance verified live 2026-07-05",
+    },
     # --- add your own below (verify the balance first) ----------------------
     # "Coinbase Prime (deposit)": {"category": "custody", "addresses": [...],
     #     "source": "Arkham entity export"},

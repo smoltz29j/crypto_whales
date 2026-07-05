@@ -163,8 +163,9 @@ def main(argv: list[str]) -> None:
     for name, e in sorted(snap["entities"].items(), key=lambda kv: kv[1]["net"]):
         print(f"  {name:<22} {e['cat']:<14} bal {e['bal']:>12,.1f}  "
               f"net {e['net']:>+10.2f}")
-    print(f"  hot-wallet net: {hot_net(snap):+,.2f} BTC "
-          f"({'deposits/sell-pressure lean' if hot_net(snap) > 0 else 'withdrawals/accumulation lean'})")
+    lean = ("deposits/sell-pressure lean" if hot_net(snap) > 0
+            else "withdrawals/accumulation lean" if hot_net(snap) < 0 else "flat")
+    print(f"  hot-wallet net: {hot_net(snap):+,.2f} BTC ({lean})")
     print(f"  appended to {SERIES_PATH}  (total {len(series) + 1} snapshots)")
 
 

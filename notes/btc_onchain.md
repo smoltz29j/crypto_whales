@@ -96,6 +96,39 @@ The chain has no names; labels come from elsewhere. Empirically:
   Bottom line: exchange labels are gettable free; custodial/ETF/MSTR attribution
   realistically still needs Arkham (free-tier key or paid).
 
+## Addendum 2026-07-05 — watchlist expansion + net-flow time series
+
+Two follow-ups landed the same day:
+
+**1. Multi-exchange expansion (`btc/expand.py`).** The deferred "profile the
+labeled wallets" pass turned out cheap once done right: one `/address` call per
+candidate gives balance *and* tx_count together, and the non-BitMEX label set is
+only ~60 addresses (spaced 0.7s, cached to `data/btc_profile.json`). Result:
+**+24 funded addresses, watchlist went from ~414k to ~759k BTC / 11 entities**:
+Binance cold reserves +243.1k (two `3…` vaults), OKX cold +69.1k (15 round-number
+tranches, 3k/5k/6k/10k each), Crypto.com hot +23.5k (96k txs), Huobi cold +7.6k,
+Bybit cold+hot +1.8k. Empty-but-labeled wallets (kucoin, swissborg, deribit, and
+Binance's famous old `1NDyJtNT…` hub — 1.19M txs, 0.09 BTC left) were *not*
+added: rotated/drained. Two lessons:
+  - **base58 addresses are case-sensitive** — labels_import lowercased its cache
+    keys and threw the original case away, so every `1…`/`3…` query 404'd on the
+    first run. The cache now keeps `addr` (original case) next to the lowercase
+    lookup key; query APIs only with `addr`.
+  - The zero-balance hot wallets confirm the rotation caveat: labels go stale,
+    balances are the ground truth (kucoin's labeled hot wallet had 142k txs and
+    0 BTC).
+
+**2. Net-flow time series (`btc_track.py` + hourly cron at :35).** On-chain
+sibling of whales_track.py: per-entity balance + confirmed IN/OUT/NET since the
+previous snapshot → `data/btc_track.jsonl`, with the BTC mark price (Hyperliquid
+mids) embedded so `--analyze` can test signal → *forward* return self-contained
+(same spacing-guard + const-guess-base-rate method as whales_track). Signal
+carrier = `hot_net`: summed net flow into `exchange_hot` wallets (deposits ≈
+sell-pressure, withdrawals ≈ accumulation). Window capped at 6h after cron
+outages. ~28s/run with the expanded 30-address list. NB: the watchlist grew at
+snapshot #2, so `hot_net` composition changes there — the series is effectively
+clean from 2026-07-05 23:23 JST onward; re-test at ~30 days like whale_track.
+
 ## Caveats (observed)
 - Cold wallets move rarely — `--hours 24` is usually empty; that's correct, not a
   bug. Recent txs on a cold address can be months old.

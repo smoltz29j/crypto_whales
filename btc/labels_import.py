@@ -94,12 +94,17 @@ def _fetch(name: str) -> str:
 
 
 def refresh(packs: list[str] = PACKS) -> dict[str, dict]:
-    """Fetch all packs, build address(lower)->{entity,label} for BTC, cache to disk."""
+    """Fetch all packs, build address(lower)->{addr,entity,label} for BTC, cache
+    to disk. The key is lowercased for case-insensitive counterparty lookups;
+    `addr` keeps the original case — base58 addresses are case-SENSITIVE, so
+    only `addr` can be used to query an API (this bit btc/expand.py once)."""
     labels: dict[str, dict] = {}
     for name in packs:
         try:
             for t in parse_tagpack(_fetch(name)):
-                labels[t["address"].lower()] = {"entity": t["entity"], "label": t["label"]}
+                labels[t["address"].lower()] = {"addr": t["address"],
+                                                "entity": t["entity"],
+                                                "label": t["label"]}
         except Exception as e:  # noqa: BLE001 - skip a bad/missing pack, keep going
             print(f"  ! skip {name}: {e}")
     CACHE.parent.mkdir(exist_ok=True)
