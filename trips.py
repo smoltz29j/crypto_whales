@@ -19,11 +19,13 @@ Usage:
 Every trip is also written to data/trips_btc.jsonl (one JSON object per
 line, with the trader's address) for ad-hoc follow-up study.
 
-Caveats: same 2000-fill window as skilled.py — recent behavior only, and
-trips straddling the window edge are dropped. Momentum stats need 1h candles;
-Hyperliquid keeps only the most recent ~5000 (~200 days), older entries get
-no momentum read. A flip (long->short in one fill) closes one trip and opens
-the next at the same fill. Times below are UTC; JST = UTC+9.
+Caveats: skill *verification* uses the recent-2000-fill window (skilled.py),
+but trips are extracted from each verified trader's FULL paged fill history
+(deep_fills, up to MAX_DEEP_FILLS); trips straddling a history edge are
+dropped. Momentum stats need 1h candles; Hyperliquid keeps only the most
+recent ~5000 (~200 days), older entries get no momentum read (excluded from
+those stats, counted in the rest). A flip (long->short in one fill) closes
+one trip and opens the next at the same fill. Times are UTC; JST = UTC+9.
 """
 from __future__ import annotations
 
@@ -43,9 +45,67 @@ MIN_TRIPS = 8          # a trader needs this many complete trips to be studied
 MOM_HOURS = 4          # "prior move" lookback for momentum-vs-reversion
 BIG_MOVE = 0.01        # |prior move| >= this counts as "entry after a move"
 TOP_N = 30             # trader rows to print
+# Maximize the population (user decision 2026-07-05): widen the candidate
+# funnel ~3x over skilled.py's defaults, and fetch each verified trader's
+# FULL fill history (userFillsByTime pages forward from t=0, 2000/call)
+# instead of the recent-2000 window. Verification still runs on the recent
+# window (skill = recent); only the behavior stats use the deep history.
+FUNNEL = {"TOP_MONTH_PNL": 400, "TOP_WEEK_PNL": 300, "TOP_MONTH_ROI": 400}
+MAX_DEEP_FILLS = 12_000   # per-address cap on history pagination
+DEEP_CACHE_AGE = 86_400.0  # deep history changes slowly; refetch daily
 # -------------------------------------------------------------------------
 
 OUT_PATH = Path(__file__).resolve().parent / "data" / "trips_btc.jsonl"
+DEEP_CACHE_DIR = Path(__file__).resolve().parent / "data" / "fills_deep"
+
+
+# --- deep fill history ---------------------------------------------------------
+
+def _fill_key(f: dict) -> tuple:
+    return (f.get("tid"), f.get("oid"), f.get("time"), f.get("px"), f.get("sz"))
+
+
+def deep_fills(hl: HyperliquidInfo, addr: str) -> list[dict]:
+    """Full fill history via userFillsByTime, paged forward from t=0
+    (each call returns the oldest <= 2000 fills at or after startTime), merged
+    with the recent user_fills window, deduped, oldest first. Disk-cached."""
+    DEEP_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache = DEEP_CACHE_DIR / f"{addr}.json"
+    if cache.exists() and (time.time() - cache.stat().st_mtime) < DEEP_CACHE_AGE:
+        return json.loads(cache.read_text())
+    out: list[dict] = []
+    seen: set[tuple] = set()
+
+    def add(fills: list[dict]) -> int:
+        n = 0
+        for f in fills:
+            k = _fill_key(f)
+            if k not in seen:
+                seen.add(k)
+                out.append(f)
+                n += 1
+        return n
+
+    start = 0
+    while len(out) < MAX_DEEP_FILLS:
+        page = hl.user_fills_by_time(addr, start)
+        if not page:
+            break
+        n_new = add(page)
+        if len(page) < 2000:
+            break
+        # inclusive restart at the newest ms of the page so same-ms fills at
+        # the boundary aren't skipped; dedup absorbs the overlap. n_new == 0
+        # would mean an entire page of duplicates -> bail rather than spin.
+        if n_new == 0:
+            break
+        start = max(f["time"] for f in page)
+    add(ws.fetch_fills(hl, addr))       # newest window (cheap: usually cached)
+    out.sort(key=lambda f: f.get("time", 0))
+    tmp = cache.with_name(cache.name + ".tmp")
+    tmp.write_text(json.dumps(out))
+    tmp.replace(cache)
+    return out
 
 
 # --- trip extraction ---------------------------------------------------------
@@ -318,17 +378,28 @@ def main(argv: list[str]) -> None:
         report_addr(hl, argv[argv.index("--addr") + 1])
         return
 
+    for k, v in FUNNEL.items():         # widen skilled.py's candidate routes
+        setattr(skilled, k, v)
     lb = hl.leaderboard()
     cands = skilled.candidates(lb)
     print(f"funnel: {len(cands)} candidates; fetching fills ...")
     rows = ws.collect(hl, [{"addr": r["ethAddress"],
                             "acctValue": wc.fnum(r["accountValue"])} for r in cands])
     verified = skilled.verified_skilled(rows)
+    print(f"verified skilled: {len(verified)}; fetching deep fill history ...")
 
     traders: list[dict] = []
     all_trips: list[dict] = []
-    for r in verified:
-        trips = trip_records(skilled.coin_fills(r["fills"]))
+    for i, r in enumerate(verified, 1):
+        if i % 10 == 0:
+            print(f"  ...{i}/{len(verified)} deep histories fetched")
+        try:
+            hist = skilled.coin_fills(ws.perp_fills(deep_fills(hl, r["addr"])))
+        except Exception as e:  # noqa: BLE001 - fall back to the recent window
+            print(f"warning: deep fetch failed for {r['addr'][:10]}.. ({e!r}); "
+                  f"using recent window", file=sys.stderr)
+            hist = skilled.coin_fills(r["fills"])
+        trips = trip_records(hist)
         if len(trips) < MIN_TRIPS:
             continue
         for t in trips:
