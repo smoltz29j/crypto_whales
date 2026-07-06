@@ -114,6 +114,42 @@ statistically real edge marker in this cohort.** Still pending: control group
 (do losing traders also cut fast?), notes update of the main findings above,
 Word report v3 to the NAS.
 
+## Addendum 3 — control group: verified losers (2026-07-06, trips.py --losers)
+
+Same activity bar, opposite outcome (net < 0, PF <= 0.9, worst-pnl/roi funnel):
+**182 loser traders / 34,606 trips** vs the 50 winners / 4,564. Per-trader
+features, two-sided MWU across traders (`trips_compare.py`):
+
+```
+feature            winners  losers   p        note
+cut_ratio            0.39    0.53   0.021    losers cut fast TOO (134/177 < 1)
+payoff ratio         1.38    0.81   4.5e-5   (partly selection-implied)
+trip win rate        50%     37%    9.6e-9   (partly selection-implied)
+median hold          2.6h    1.4h   0.006
+fade share           63%     54%    0.014
+pyramid rate         85%     77%    0.002
+median clip         $77K    $36K    0.002
+trips (activity)     43     100     9.1e-5   losers overtrade 2.3x
+```
+
+**The revision to Finding 1:** cut-losses-fast is NOT a winner-only trait —
+76% of verified losers also hold losses shorter than wins (stop-losses are
+just how active HL traders operate). Winners are more *extreme* about it
+(0.39 vs 0.53, p=0.021), but the discipline alone doesn't separate the groups.
+
+**What actually separates them (beyond the selection-implied WR/payoff):**
+losers cut losses fast *and cut winners fast too* (hold 1.4h vs 2.6h overall)
+— they have the loss-cutting half of the asymmetry without the let-winners-run
+half. Plus: losers overtrade (100 vs 43 trips), trade smaller ($36K vs $77K),
+chase more (fade 54% vs 63%), pyramid less. The one-line story becomes:
+**「負けを切る」は全員やっている。勝者を分けるのは「勝ちを切らない」方.**
+
+Caveats: WR and payoff differences are partly tautological (groups were
+*selected* on net pnl, and net pnl is a function of WR × payoff) — the
+behavioral rows (holds, fade, pyramid, clip, activity) are the meaningful
+discriminators. Cohort sizes are asymmetric (182 vs 50). Same
+non-independence caveats as Addendum 2.
+
 ## Caveats
 
 - **Survivorship by construction**: every trader here passed the skill filter,

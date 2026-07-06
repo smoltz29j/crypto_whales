@@ -53,9 +53,15 @@ TOP_N = 30             # trader rows to print
 FUNNEL = {"TOP_MONTH_PNL": 400, "TOP_WEEK_PNL": 300, "TOP_MONTH_ROI": 400}
 MAX_DEEP_FILLS = 12_000   # per-address cap on history pagination
 DEEP_CACHE_AGE = 86_400.0  # deep history changes slowly; refetch daily
+# --losers control group: same activity bar as the skilled cohort (closes,
+# span, MIN_TRIPS), same funnel sizes but sorted the other way (worst month/
+# week pnl, worst month roi above the same volume floor), verified as
+# genuinely losing on their BTC fills:
+LOSER_MAX_PF = 0.9        # profit factor at or below this (winners need >= 1.5)
 # -------------------------------------------------------------------------
 
 OUT_PATH = Path(__file__).resolve().parent / "data" / "trips_btc.jsonl"
+OUT_PATH_LOSERS = Path(__file__).resolve().parent / "data" / "trips_btc_losers.jsonl"
 DEEP_CACHE_DIR = Path(__file__).resolve().parent / "data" / "fills_deep"
 
 
@@ -370,6 +376,50 @@ def report_addr(hl: HyperliquidInfo, addr: str) -> None:
               f"{wc.fmt_usd(t['max_ntl']):>8} {wc.fmt_usd(t['pnl']):>9} {prior:>8}")
 
 
+# --- losers control group -------------------------------------------------------
+
+def loser_candidates(lb: list[dict]) -> list[dict]:
+    """Mirror of skilled.candidates with ascending sorts: worst month pnl,
+    worst week pnl, worst month roi above the same volume floor."""
+    routes = [
+        sorted(lb, key=lambda r: wc.fnum(skilled.window_perf(r, "month").get("pnl")))[:skilled.TOP_MONTH_PNL],
+        sorted(lb, key=lambda r: wc.fnum(skilled.window_perf(r, "week").get("pnl")))[:skilled.TOP_WEEK_PNL],
+        sorted(
+            [r for r in lb if wc.fnum(skilled.window_perf(r, "month").get("vlm")) >= skilled.MIN_ROI_VLM],
+            key=lambda r: wc.fnum(skilled.window_perf(r, "month").get("roi")),
+        )[:skilled.TOP_MONTH_ROI],
+    ]
+    seen: set[str] = set()
+    out: list[dict] = []
+    for route in routes:
+        for r in route:
+            if r["ethAddress"] not in seen:
+                seen.add(r["ethAddress"])
+                out.append(r)
+    return out
+
+
+def verified_losers(rows: list[dict]) -> list[dict]:
+    """Same activity bar as skilled.verified_skilled, opposite outcome:
+    net-of-fees < 0 and PF <= LOSER_MAX_PF on the COINS-restricted fills."""
+    out = []
+    for r in rows:
+        cf = skilled.coin_fills(r["fills"])
+        if not cf:
+            continue
+        m = ws.fill_metrics(cf)
+        if (m["n_realized"] >= skilled.MIN_REALIZED_FILLS
+                and m["span_days"] >= skilled.MIN_SPAN_DAYS
+                and m["net_pnl"] < 0 and m["profit_factor"] <= LOSER_MAX_PF):
+            r["metrics"] = m
+            r["style"] = skilled.style(cf)
+            r["style"]["coin_share"] = len(cf) / len(r["fills"])
+            r["archetype"] = skilled.archetype(r["style"])
+            out.append(r)
+    out.sort(key=lambda r: r["metrics"]["net_pnl"])     # worst first
+    return out
+
+
 # --- main -----------------------------------------------------------------------
 
 def main(argv: list[str]) -> None:
@@ -377,16 +427,20 @@ def main(argv: list[str]) -> None:
     if "--addr" in argv:
         report_addr(hl, argv[argv.index("--addr") + 1])
         return
+    losers = "--losers" in argv
+    out_path = OUT_PATH_LOSERS if losers else OUT_PATH
 
     for k, v in FUNNEL.items():         # widen skilled.py's candidate routes
         setattr(skilled, k, v)
     lb = hl.leaderboard()
-    cands = skilled.candidates(lb)
-    print(f"funnel: {len(cands)} candidates; fetching fills ...")
+    cands = loser_candidates(lb) if losers else skilled.candidates(lb)
+    print(f"funnel ({'LOSERS' if losers else 'skilled'}): {len(cands)} candidates; "
+          f"fetching fills ...")
     rows = ws.collect(hl, [{"addr": r["ethAddress"],
                             "acctValue": wc.fnum(r["accountValue"])} for r in cands])
-    verified = skilled.verified_skilled(rows)
-    print(f"verified skilled: {len(verified)}; fetching deep fill history ...")
+    verified = verified_losers(rows) if losers else skilled.verified_skilled(rows)
+    print(f"verified {'losers' if losers else 'skilled'}: {len(verified)}; "
+          f"fetching deep fill history ...")
 
     traders: list[dict] = []
     all_trips: list[dict] = []
@@ -406,7 +460,8 @@ def main(argv: list[str]) -> None:
             t["addr"] = r["addr"]
         traders.append({**r, "trips": trips})
         all_trips.extend(trips)
-    print(f"directional: {len(traders)} of {len(verified)} verified skilled have "
+    print(f"directional: {len(traders)} of {len(verified)} verified "
+          f"{'losers' if losers else 'skilled'} have "
           f">= {MIN_TRIPS} complete trips ({len(all_trips)} trips total)")
     if not traders:
         return
@@ -418,15 +473,13 @@ def main(argv: list[str]) -> None:
         r["tsum"] = trader_summary(r["trips"])
     traders.sort(key=lambda r: -r["tsum"]["net"])
 
-    OUT_PATH.parent.mkdir(exist_ok=True)
-    tmp = OUT_PATH.with_name(OUT_PATH.name + ".tmp")
+    out_path.parent.mkdir(exist_ok=True)
+    tmp = out_path.with_name(out_path.name + ".tmp")
     with tmp.open("w") as fh:
         for t in all_trips:
             fh.write(json.dumps(t) + "\n")
-    tmp.replace(OUT_PATH)
-    print(f"wrote {len(all_trips)} trips to {OUT_PATH.relative_to(Path.cwd())}"
-          if OUT_PATH.is_relative_to(Path.cwd()) else
-          f"wrote {len(all_trips)} trips to {OUT_PATH}")
+    tmp.replace(out_path)
+    print(f"wrote {len(all_trips)} trips to {out_path}")
 
     print_traders(traders)
     print_pooled(all_trips, len(traders))
