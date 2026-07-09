@@ -1,4 +1,29 @@
-# Per-trip setup analysis of skilled BTC traders — first reading (2026-07-05)
+# Per-trip setup analysis of skilled BTC traders
+
+**Current verdicts (2026-07-09 — Addendum 4 is authoritative; everything below
+this box is chronological history, kept because each revision taught
+something):**
+
+- Population: **54 winners / 5,486 trips** vs **156 verified losers / 31,906**
+  (continuity-guarded extraction after the 2026-07-09 corruption fix,
+  `MAX_DEEP_FILLS` 30k — see `notes/review_2026-07-09.md`).
+- **Exit discipline is real but universal.** Within winners it is enormous
+  (Stouffer p = 7.3e-38, median hold ratio 0.35), but the control group cuts
+  losses at the identical rate (82% both groups; degree n.s., p = 0.29).
+  It is a market norm, not an edge marker.
+- **What robustly separates winners from losers:** trade half as often
+  (p = 0.001), pyramid more (p = 0.004), 2.3x the clip size (p = 0.006) —
+  「少なく・大きく・積み増して張る」. "Let winners run" (2.8h vs 1.4h) survives
+  only as a trend (p = 0.056).
+- **Fade edge within winners: reopened on clean data** (CMH p = 0.023) — weak
+  evidence, pending forward validation; do not quote as confirmed.
+  Vol-trigger: dead. Pyramiding-within-winners: dead.
+- History reading order: first reading (17/574) → statistical treatment →
+  Addendum 2 (50/4,564) → Addendum 3 (control group) → **Addendum 4 (current)**.
+
+---
+
+## First reading (2026-07-05) — historical; population and numbers superseded
 
 `trips.py` executes the next step recorded in notes/skilled_findings.md: for the
 *directional* cluster of verified skilled BTC traders (>= 8 complete flat->flat
@@ -149,6 +174,66 @@ Caveats: WR and payoff differences are partly tautological (groups were
 behavioral rows (holds, fade, pyramid, clip, activity) are the meaningful
 discriminators. Cohort sizes are asymmetric (182 vs 50). Same
 non-independence caveats as Addendum 2.
+
+## Addendum 4 — data regenerated after the continuity-bug fix (2026-07-09)
+
+**Why everything above was re-derived:** the 2026-07-09 review
+(`notes/review_2026-07-09.md` #1) found that trip extraction trusted the fill
+stream to be gapless. `deep_fills`' 12k pagination cap left an unfetched hole
+before the spliced recent window, and some position changes have no fill at
+all; 87/243 cached accounts had position-chain breaks (worst: one "trip"
+spanning a 97-day gap). A continuity guard now drops any trip straddling a
+gap, and `MAX_DEEP_FILLS` was raised 12k → 30k to recover the region the guard
+would otherwise discard. **All Addendum 2/3 numbers are superseded by the
+following** (winners 54 traders / 5,486 trips; losers 156 / 31,906;
+101/836 fills fetches failed on rate limits — a warm-cache rerun could grow
+this slightly).
+
+**Setup verdicts on clean data (`trips_stats.py`):**
+
+1. **Exit discipline (hold ratio): confirmed, stronger.** 42/51 traders with
+   ratio < 1; Stouffer z = −12.81, p = 7.3e-38; median ratio 0.35, cluster
+   bootstrap 95% CI [0.22, 0.54]. Scratch-excluded: p = 2.1e-24, median 0.47.
+2. **Fade edge: REOPENED (was "dead" on corrupt data).** CMH stratified,
+   44 strata: OR_MH = 1.19, z = +2.28, p = 0.023 two-sided. Nominally
+   significant, but (a) three comparisons in this family (Bonferroni ≈ 0.07),
+   (b) the verdict flipped between datasets, which is itself evidence of
+   fragility. Status: *weak evidence, pending forward validation* — do not
+   quote as a confirmed edge.
+3. **Vol-trigger: still dead** (OR 1.05, p = 0.53). Verdict unchanged.
+4. **Pyramiding within winners: dead** (OR 0.97, p = 0.71) — settles
+   Addendum 2's "unstable marginal" as no effect.
+
+**Control-group revision (this changes Addendum 3's story):**
+
+```
+feature            winners  losers   p(two-sided)   verdict on clean data
+cut_ratio            0.35    0.47      0.29         NOT a discriminator anymore
+cut_ratio < 1        42/51  121/148     —           82% vs 82% — identical share
+median hold          2.8h    1.4h      0.056        trend only, no longer clean
+fade share           56%     53%       0.060        trend only (was 63% vs 54%)
+trip count           48.5    99        0.001        ROBUST: losers overtrade 2x
+pyramid rate         89%     81%       0.004        ROBUST
+median clip         $115K   $49K       0.006        ROBUST
+trip win rate        49%     36%       3e-6         partly selection-implied
+payoff               1.13    0.91      0.018        partly selection-implied
+```
+
+Loss-cutting is now *fully* universal: the share of cutters is identical
+(82% both groups) and even the degree (0.35 vs 0.47) is not significant.
+The Addendum 3 one-liner — 「勝者を分けるのは『勝ちを切らない』方」 — must be
+downgraded to a trend (p = 0.056). What robustly separates winners on clean
+data is **selectivity and size: they trade half as often, with 2.3x the clip,
+and pyramid more**. 規律の物語はどちらの向きでも死に、残ったのは
+「少なく・大きく・積み増して張る」.
+
+(The corrupt data had *inflated* the discipline contrasts: gap-spanning
+phantom trips created artificially long "winning holds" for winners with long
+histories — exactly the accounts the 12k cap hit hardest.)
+
+**Persistence test** (fee bug fixed the same day, see
+`notes/skill_findings.md` addendum): Spearman +0.59..+0.64, conclusions
+unchanged.
 
 ## Caveats
 

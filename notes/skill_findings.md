@@ -69,3 +69,26 @@ Two claims, different confidence:
   fetches right after it 429 for a while — `hl/client.py` now backs off
   exponentially on 429 (2/4/8/16s), `whales_skill.py` uses retries=4 and
   WORKERS=4, and fills are disk-cached 1h per address.
+
+## Addendum — persistence re-run after the opening-fee fix (2026-07-09)
+
+The 2026-07-09 review (`notes/review_2026-07-09.md` #3) found `persistence()`
+was dropping opening-fill fees from `net1`/`net2` (it pre-filtered to realized
+fills before calling `fill_metrics`, whose contract is the full stream). The
+split is now a time-split of the full fills list at the median realized fill.
+Re-run (125 accounts, >= 40 realized fills):
+
+```
+first-half metric      spearman vs 2nd-half net   (old, biased run)
+win_rate                        +0.64                 (+0.54)
+net_pnl                         +0.59                 (+0.62)
+profit_factor                   +0.62                 (+0.55)
+leaderboard pnl                 +0.16                 (+0.22)
+top half by wr1:  median 2nd-half net $70.4K, 82% positive  (was 85%)
+bottom half:      median -$8.1K, 30% positive               (was 40%)
+const-guess base rate: 56%
+```
+
+Conclusions unchanged: fills-based skill persists, leaderboard pnl is a weak
+proxy. The bottom-half deterioration (40% → 30% positive) is the fee bias
+coming out — fees hit high-churn accounts hardest.
