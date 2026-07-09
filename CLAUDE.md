@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**詳細な引き継ぎは `HANDOFF.md` を読むこと**（ユーザー方針・依頼パターン・APIクックブック・確定した知見・落とし穴・申し送り。日本語）。
+
 ## What this is
 
 A research project on **Hyperliquid (HYPE) — the HyperCore perpetuals exchange**.
