@@ -106,9 +106,15 @@ def round_trips(fills: list[dict]) -> list[dict]:
     for coin, fs in by_coin.items():
         open_ms: int | None = None
         pnl = 0.0
+        prev_end: float | None = None
         for f in fs:
             start = wc.fnum(f.get("startPosition"))
             end = start + _fill_delta(f)
+            if (open_ms is not None and prev_end is not None
+                    and abs(start - prev_end)
+                    > 1e-9 * max(1.0, abs(start), abs(prev_end))):
+                open_ms = None  # fill-stream gap: drop the straddling trip
+            prev_end = end
             if open_ms is None:
                 if start == 0.0 and end != 0.0:      # fresh open at a flat book
                     open_ms = f["time"]
@@ -265,7 +271,10 @@ def report_one(hl: HyperliquidInfo, addr: str) -> None:
 def main(argv: list[str]) -> None:
     hl = HyperliquidInfo(retries=4)
     if "--addr" in argv:
-        report_one(hl, argv[argv.index("--addr") + 1])
+        i = argv.index("--addr")
+        if i + 1 >= len(argv):
+            sys.exit("usage: skilled.py --addr 0x...")
+        report_one(hl, argv[i + 1])
         return
     lb = hl.leaderboard()
     cands = candidates(lb)

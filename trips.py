@@ -51,7 +51,10 @@ TOP_N = 30             # trader rows to print
 # instead of the recent-2000 window. Verification still runs on the recent
 # window (skill = recent); only the behavior stats use the deep history.
 FUNNEL = {"TOP_MONTH_PNL": 400, "TOP_WEEK_PNL": 300, "TOP_MONTH_ROI": 400}
-MAX_DEEP_FILLS = 12_000   # per-address cap on history pagination
+MAX_DEEP_FILLS = 30_000   # per-address cap on history pagination (raised from
+                          # 12k 2026-07-09: the continuity guard now *drops*
+                          # trips in the cap-to-recent-window gap instead of
+                          # corrupting them, so a low cap costs sample size)
 DEEP_CACHE_AGE = 86_400.0  # deep history changes slowly; refetch daily
 # --losers control group: same activity bar as the skilled cohort (closes,
 # span, MIN_TRIPS), same funnel sizes but sorted the other way (worst month/
@@ -152,6 +155,7 @@ def trip_records(fills: list[dict]) -> list[dict]:
     trips: list[dict] = []
     for coin, fs in by_coin.items():
         cur: dict | None = None
+        prev_end: float | None = None
         for f in fs:
             px, sz = wc.fnum(f.get("px")), wc.fnum(f.get("sz"))
             fee = wc.fnum(f.get("fee"))
@@ -160,6 +164,13 @@ def trip_records(fills: list[dict]) -> list[dict]:
             delta = sz if f.get("side") == "B" else -sz
             end = start + delta
             maker = 0 if f.get("crossed", True) else 1
+            if (cur is not None and prev_end is not None
+                    and abs(start - prev_end)
+                    > 1e-9 * max(1.0, abs(start), abs(prev_end))):
+                # fill-stream gap (deep_fills pagination edge, or a position
+                # change with no fill): the straddling trip is unknowable
+                cur = None
+            prev_end = end
             if cur is None:
                 if start == 0.0 and end != 0.0:      # fresh open at a flat book
                     cur = _open_trip(coin, f["time"], px, abs(end), fee, maker,
@@ -235,8 +246,8 @@ def trader_summary(trips: list[dict]) -> dict:
     losses = [t for t in trips if t["pnl"] <= 0]
     al = [aligned(t) for t in trips]
     al = [a for a in al if a is not None]
-    big = [t for t in trips if t.get("ret_prior") is not None
-           and abs(t["ret_prior"]) >= BIG_MOVE]
+    readable = [t for t in trips if t.get("ret_prior") is not None]
+    big = [t for t in readable if abs(t["ret_prior"]) >= BIG_MOVE]
     blocks: dict[int, int] = defaultdict(int)
     for t in trips:
         blocks[t["hour_utc"] // 4] += 1
@@ -253,7 +264,9 @@ def trader_summary(trips: list[dict]) -> dict:
         "pyr": sum(1 for t in trips if t["n_adds"] > 0) / len(trips),
         "cut": hold_l / hold_w if hold_w and losses else None,
         "mom": sum(al) / len(al) if al else None,
-        "big": len(big) / len(trips),
+        # denominator = trips with a candle read, matching the pooled report
+        # (old trips without candles would otherwise dilute the share)
+        "big": len(big) / len(readable) if readable else None,
         "long": sum(1 for t in trips if t["side"] == "L") / len(trips),
         "block": f"{top_block * 4:02d}-{top_block * 4 + 4:02d}",
         "block_share": top_n / len(trips),
@@ -278,9 +291,10 @@ def print_traders(traders: list[dict]) -> None:
         payoff = f"{s['payoff']:.1f}" if s["payoff"] != float("inf") else "inf"
         cut = f"{s['cut']:.2f}" if s["cut"] is not None else "-"
         mom = f"{s['mom']:.0%}" if s["mom"] is not None else "-"
+        big = f"{s['big']:.0%}" if s["big"] is not None else "-"
         print(f"  {r['addr'][:10] + '..':<12} {s['n']:>5} {s['wr']:>4.0%} "
               f"{_fmt_h(s['hold']):>6} {payoff:>6} {s['pyr']:>4.0%} {cut:>5} "
-              f"{mom:>4} {s['big']:>4.0%} {s['long']:>4.0%} "
+              f"{mom:>4} {big:>4} {s['long']:>4.0%} "
               f"{s['block'] + f' {s['block_share']:.0%}':>8} "
               f"{wc.fmt_usd(s['med_ntl']):>8} {wc.fmt_usd(s['net']):>9}  "
               f"{r['archetype']}")

@@ -82,7 +82,7 @@ class Esplora:
         """Walk back through confirmed history up to max_txs (paginates for you)."""
         out = self.address_txs(addr)
         out = [t for t in out if t.get("status", {}).get("confirmed")]
-        while len(out) < max_txs:
+        while out and len(out) < max_txs:
             page = self.address_txs_chain(addr, out[-1]["txid"])
             if not page:
                 break

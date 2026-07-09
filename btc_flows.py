@@ -59,7 +59,8 @@ def label_map() -> dict[str, str]:
 def _counterparties(tx: dict, addr: str, outflow: bool, labels: dict[str, str]) -> list[tuple[str, int]]:
     """Aggregate the *other* side by label. outflow -> look at outputs, else inputs."""
     agg: dict[str, int] = {}
-    side = tx["vout"] if outflow else [i.get("prevout", {}) for i in tx["vin"]]
+    # coinbase inputs carry an explicit "prevout": null (not a missing key)
+    side = tx["vout"] if outflow else [i.get("prevout") or {} for i in tx["vin"]]
     for entry in side:
         a = entry.get("scriptpubkey_address")
         if not a or a == addr:

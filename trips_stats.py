@@ -80,6 +80,9 @@ def hold_test(trip_filter=lambda t: True, label=""):
         if r < 1:
             n_shorter += 1
         print(f"{a[:10] + '..':<12} {len(w):>3} {len(l):>3} {r:>6.2f} {z:>+6.2f} {p:>12.4g}")
+    if not zs:
+        print("  (no traders with >= 3 wins and >= 3 losses — nothing to test)")
+        return
     # sign test (exact binomial, one-sided: P(X >= n_shorter | p=0.5))
     n = n_traders
     p_sign = sum(math.comb(n, i) for i in range(n_shorter, n + 1)) / 2**n

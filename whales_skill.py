@@ -169,11 +169,19 @@ def persistence(rows: list[dict]) -> None:
     first-half skill predicts second-half net PnL across accounts."""
     samples = []
     for r in rows:
-        realized = [f for f in r["fills"] if wc.fnum(f.get("closedPnl")) != 0.0]
+        fills = r["fills"]
+        realized = [f for f in fills if wc.fnum(f.get("closedPnl")) != 0.0]
         if len(realized) < MIN_REALIZED_FILLS:
             continue
-        half = len(realized) // 2
-        m1, m2 = fill_metrics(realized[:half]), fill_metrics(realized[half:])
+        # split the *full* fills stream at the median realized fill's time:
+        # fill_metrics charges opening fees to the equity curve, so passing it
+        # a realized-only list would silently drop those fees from net1/net2
+        cut = realized[len(realized) // 2]["time"]
+        h1 = [f for f in fills if f["time"] < cut]
+        h2 = [f for f in fills if f["time"] >= cut]
+        if not any(wc.fnum(f.get("closedPnl")) != 0.0 for f in h1):
+            continue  # timestamp ties pushed every realized fill into h2
+        m1, m2 = fill_metrics(h1), fill_metrics(h2)
         samples.append({
             "addr": r["addr"],
             "skillPnl": r.get("skillPnl", 0.0),   # leaderboard proxy, for comparison

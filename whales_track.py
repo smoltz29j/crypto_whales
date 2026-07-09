@@ -32,6 +32,9 @@ import whales_coin as wc
 # --- knobs ---------------------------------------------------------------
 RATIO_COINS = ("BTC", "ETH")     # ratio = price[0] / price[1]
 HORIZON_STEPS = 1                 # forward look-ahead (in snapshots) for prediction test
+MAX_N_FAILED = 75                 # --analyze drops snapshots with more failed fetches
+                                  # (a rate-limited scan yields bias=0.0 rows that would
+                                  # otherwise pass for genuinely neutral readings)
 # -------------------------------------------------------------------------
 
 SERIES_PATH = Path(__file__).resolve().parent / "data" / "whale_track.jsonl"
@@ -117,6 +120,15 @@ def _hit_rate(signals: list[float], fwd_rets: list[float]) -> tuple[int, int]:
 
 def analyze(series: list[dict], horizon: int = HORIZON_STEPS) -> None:
     a, b = RATIO_COINS
+    # Degraded scans (mass 429s) write bias=0.0 with valid prices — identical to
+    # a genuinely neutral reading. n_failed is recorded for exactly this filter
+    # (rows before 2026-07-02 predate the key -> .get()). The spacing guard
+    # below absorbs the gaps this filtering creates.
+    ok = [s for s in series if s.get("n_failed", 0) <= MAX_N_FAILED]
+    if len(ok) < len(series):
+        print(f"note: dropped {len(series) - len(ok)} degraded snapshot(s) "
+              f"(n_failed > {MAX_N_FAILED})")
+    series = ok
     need = horizon + 2
     if len(series) < need:
         print(f"need >= {need} snapshots to analyze (have {len(series)}). "
