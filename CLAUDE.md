@@ -24,6 +24,7 @@ python3 skilled.py     # THE CURRENT FOCUS: size-agnostic skilled-BTC-trader fin
 python3 skilled.py --addr 0x…  # deep style report for one address
 python3 trips.py       # per-trip setup analysis of the directional skilled cluster
 python3 trips.py --addr 0x…    # per-trip listing for one address
+python3 forward.py     # forward validation of the 2026-07-02 verified cohort (OOS PnL + survivor overlap)
 ```
 
 No dependencies to install — scripts use only the Python 3 stdlib (`urllib`, `json`).
@@ -68,6 +69,12 @@ The Hyperliquid Info API needs **no authentication**; everything runs against th
   loss-cut speed. First reading (`notes/trips_findings.md`): the near-universal signature of
   verified skill is *cut losses fast, let wins run* (16/16, median loss/win hold ratio 0.30);
   entries are fades (~⅓ momentum-aligned), triggered by volatility, clustered at NY open.
+- **`forward.py`**: forward validation of the 2026-07-02 verified cohort (40 addrs recovered from
+  the session transcript, `data/seed_2026-07-02.json`): all fills since the exact 07-02 run moment
+  (paged `userFillsByTime`, cached `data/fills_fwd/`), BTC OOS metrics with skilled.py's knobs, plus
+  survivor overlap vs a fresh funnel run. First reading (`notes/forward_findings.md`, OOS 16d):
+  in-sample persistence does NOT carry forward (38% stay positive vs 85% expected, p≈1.5e-7;
+  Spearman in-sample PF → OOS net = −0.20; aggregate −$553K in a flat market). 30-day reading ~08-02.
 - **`whales_skill.py`**: *real* per-whale performance from `user_fills` (win rate, profit factor,
   net-of-fees PnL, equity curve, max drawdown) instead of the leaderboard pnl proxy; `--persistence`
   split-half-tests whether skill persists (first reading: yes, and fills metrics beat the proxy

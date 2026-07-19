@@ -2,7 +2,7 @@
 
 どのモデル・どのセッションで作業しても同じ品質・同じ判断になるように、暗黙知を全部書き出したもの。
 `CLAUDE.md` は要点（英語）、本書は詳細（日本語）。**分析の実行・findings の更新・レポート作成の前に、該当セクションを必ず読むこと。**
-（最終更新: 2026-07-07。スナップショット数値は更新時点のもの）
+（最終更新: 2026-07-19。スナップショット数値は更新時点のもの）
 
 ---
 
@@ -96,6 +96,7 @@
 | `trips.py` | skilled の次段 — 方向性トレーダーの flat→flat トリップ抽出 + セットアップ分析（時間帯・順張り/逆張り・積み増し・損切り速度）→ `data/trips_btc.jsonl`。`--losers` で対照群（→ `trips_btc_losers.jsonl`）、`--addr` で個別一覧。`FUNNEL` で skilled の knob を 3x に上書き、`deep_fills` で全履歴ページング |
 | `trips_stats.py` | トリップ主張の統計検定（Mann-Whitney U・符号検定・Stouffer・クラスタブートストラップ・**トレーダー層別 CMH**）。データパスがハードコードなので注意 |
 | `trips_compare.py` | 勝ち組 vs 負け組の特徴量比較（トレーダー単位 MWU） |
+| `forward.py` | **フォワード検証** — 07-02 検証済みコホート（transcript から復元した40人、`data/seed_2026-07-02.json`）の cutoff 以降 OOS 成績 + 今日のファンネルとの生存重複。OOS fills は `data/fills_fwd/` にキャッシュ（キャッシュはスーパーセット可・読み出し時に時刻フィルタ） |
 | `make_report.py` | Word レポート生成（`調査まとめ_2026-07-05.docx`）。**要 python-docx（venv）** |
 
 ### BTC オンチェーン系（第2ドメイン）
@@ -122,6 +123,7 @@
 | `reference_repos.md` | 類似4リポジトリの調査（借りた手法と避けた欠陥 — 特に zero-lag 相関の罠） |
 | `whales_watchlist.md` | 2026-06-27 の BTC/ETH whale アドレス集（ポジションは陳腐化、アドレスが恒久部分） |
 | `review_2026-07-02.md` | コードレビュー記録（5修正の Before/Now） |
+| `forward_findings.md` | **フォワード検証（07-19 初回読み）** — in-sample 持続性は前向きに再現せず（38% プラス vs 期待85%、p≈1.5e-7 で棄却、in-sample PF の予測力 ρ=−0.20）。40アドレスの恒久記録つき |
 
 ### data/（**全て gitignore**。ローカル蓄積のみ）
 
@@ -134,6 +136,9 @@
 | `trips_btc_losers.jsonl` | 34,606行（対照群） |
 | `fills_cache/` | 直近2000 fills / アドレス（1h キャッシュ）。1,648件・**約959MB**。2026-07-02 分は forward validation の seed（消さない） |
 | `fills_deep/` | 全履歴 fills / アドレス（日次キャッシュ）。243件・約700MB |
+| `seed_2026-07-02.json` | フォワード検証のシード（07-02 検証済み40人。transcript から復元 — 消すと再復元が面倒） |
+| `fills_fwd/` | cutoff 以降の全 fills / アドレス（1h キャッシュ。中身はスーパーセット可 — forward.py が読み出し時に時刻フィルタ） |
+| `forward_2026-07.json` | forward.py の生出力（OOS 成績 + 生存重複） |
 | `btc_labels.json` / `btc_profile.json` | GraphSense ラベル / プロファイルキャッシュ |
 | `track_cron.log` / `btc_track_cron.log` | cron ログ |
 
@@ -238,7 +243,13 @@
    「勝ちを切らない」方**（勝ち保有 2.6h vs 負け組 1.4h）。加えて勝者は: トレード数が少ない
    （43 vs 100）、クリップが大きい（$77K vs $36K）、より逆張り（63% vs 54%）、より積み増す。
    ⚠️ WR・ペイオフの群間差は選択で部分的にトートロジー — findings として引用しない。
-6. **BTC オンチェーン**: 可視性は無料・完全、**帰属だけが問題**。単一アドレスの取引所
+6. **スキルは前向きには持続しなかった（07-19 フォワード検証・初回読み、OOS 16日）**:
+   07-02 検証済み40人のうち BTC で活動継続 24人 → プラスは 9/24（38%、コインフリップと
+   区別不能、in-sample の「85% プラス維持」は p≈1.5e-7 で棄却）。合計 OOS net −$553K
+   （BTC は +2.0% の横ばい）。in-sample PF と OOS net の Spearman は −0.20（予測力ゼロ）。
+   離脱も大きい（15/40 が BTC 取引ゼロ）。skill_findings の split-half 持続は
+   「同一レジーム共有」の caveat が本質だったと確定。詳細 `notes/forward_findings.md`。
+7. **BTC オンチェーン**: 可視性は無料・完全、**帰属だけが問題**。単一アドレスの取引所
    コールド/ホットは watchlist で追える。BlackRock/Coinbase/MSTR は構造的に無料不可
    （ローテーションする custodial クラスタ）→ Arkham 待ち。
    Binance はコールド（休眠 vault、トレース起点として死に筋）とホット（実流動ハブ）が分離、
@@ -281,6 +292,6 @@
 | ユーザー作業 | **Arkham 無料 API キーの取得**（intel.arkm.com/api → 環境変数 `ARKHAM_API_KEY`）。コードは実装済み・キーが入れば `arkham_flows.py` が即動く（ただし初回はレスポンス形状の確認が要る） |
 | ~2026-07-27 | `python3 whales_track.py --analyze --horizon 1,4,8,12,24`（30日 ≒ 720スナップショット時点）→ 結果を `notes/track_findings.md` に追記 |
 | ~2026-08-05 | `python3 btc_track.py --analyze --horizon 1,4,24`（clean series 30日時点）→ `notes/btc_onchain.md` に追記 |
-| 2026-07-19〜08-02 | **フォワード検証**: skilled.py のファンネルを再実行し、2026-07-02 の検証済みリスト（`data/fills_cache/` が seed）との生存重複と期間外 PnL を測る — 「スキル持続」の生存バイアス無しの再検定 |
+| ~2026-08-02 | **フォワード検証の30日読み**: `python3 forward.py` を再実行（fills_fwd キャッシュで安価）→ `notes/forward_findings.md` に Addendum。初回読み（07-19、OOS 16日）は完了 — 持続性は再現せず。30日読みで「現在スキル選抜」路線の存廃を決める |
 | 任意 | trips.py のウォームキャッシュ再実行（拡張 run で 93/833 fills 取得失敗 + deep 3件 — 回収するとトレーダーが増えるかもしれない） |
 | メモ | 出力形式（CLI/アラート/ダッシュボード）は 30日再検証の結果を見てから決める（意図的な未決） |
