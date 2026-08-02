@@ -92,6 +92,67 @@ whether to kill the "follow the currently-skilled" thread entirely or
 whether a slower-selection variant (require persistence across two disjoint
 windows) is worth building.
 
+## Addendum — 30-day reading (2026-08-02, OOS 31.2 days). The thread is dead.
+
+The scheduled full test. Same harness, same knobs, same cutoff; warm-cache
+rerun after the first pass recovered 41 of 45 failed funnel fetches
+(today's funnel: 315 candidates → 29 verified). Raw output overwritten in
+`data/forward_2026-07.json`.
+
+| measure | 16.4-day reading (07-19) | **31.2-day reading (08-02)** |
+|---|---|---|
+| active in BTC OOS | 24/40 | 25/40 (zero BTC fills: 14) |
+| OOS net > 0 | 9/24 = 38% | **12/25 = 48%** |
+| vs 85% in-sample rate | p≈1.5e-7 | **rejected, p≈1.7e-5** |
+| vs 50% coin flip | p≈0.31 | **p=1.00 — exactly a coin flip** |
+| summed OOS net | −$552.6K | **−$410.2K** (median −$0.9K) |
+| Spearman(in-PF, OOS net) | −0.20 | **+0.04** (t=0.20, n=24) |
+| re-verify on OOS alone | 3/24 | 4/25 |
+| BTC over window | (see correction) | **+4.9%** ($60.4K → $63.4K) |
+
+- **Every conclusion of the first reading holds at 30 days.** 48% positive is
+  a literal coin flip; the in-sample 85% stay-positive rate is rejected at
+  p≈1.7e-5; in-sample PF's forward predictive power is zero — the Spearman
+  flipping from −0.20 to +0.04 between readings is exactly what noise around
+  ρ=0 looks like.
+- **Correction to the first reading**: the window was quoted as BTC
+  "+2.0% ($62.7K → $64.0K)". The cutoff price was actually ~$60.4K (1h
+  candles, cross-checked against `whale_track.jsonl` snapshots: $60,313 at
+  14 min before cutoff). The full-window move is **+4.9%** — the cohort lost
+  $410K while BTC rose, which makes the result *worse* than first reported,
+  not better.
+- **Boundary artifact inflates the winners** (new observation): the top 3
+  OOS "winners" are single-burst closes of positions opened *before* the
+  cutoff — `0xec904540..` +$320K is one 51-BTC short closed in **53 seconds**
+  on 07-18 (162 fills, span 0.0006 days); `0x05936f6a..` +$78K and
+  `0xd0580894..` +$112K have spans of 0.0 and 0.8 days. `closedPnl`
+  attributes the whole trip's pnl to the OOS close, so these measure
+  in-sample positions, not OOS trading. The artifact cuts both ways
+  (`0xfce053a5..` −$367K has span 3.2d), but restricting to
+  **span ≥ 1 day: 8/20 positive (40%), summed net −$920K** — the traders who
+  actually *traded* OOS did substantially worse than the headline.
+- **Genuine persistence is 4/40 = 10%**: `0xaf0fdd39..` (+$158K, PF≈999),
+  `0x45354959..` (+$51K, PF 13.1), `0x6daec5ff..` (+$24K, PF 1.8),
+  `0x732f7178..` (+$12K, PF 16.0) re-verify on the OOS window alone with
+  real spans (13–31d). n=4 is anecdote, not signal — with 40 seeds and a
+  ~50% coin flip, ≥4 re-verifiers is unremarkable.
+- **Funnel overlap is now pure artifact**: 3/40 seeds are in today's funnel,
+  2/40 verify again (`0x7839e2f2..`, `0xc7290b4b..`) — and **both have zero
+  OOS BTC fills**. They verify on last-2000-fills windows that reach back
+  before the cutoff, kept in the leaderboard by mark-to-market on open
+  positions. Survivor overlap as a persistence measure is dead on arrival.
+
+**Decision (per the first reading's pre-registered rule): the
+"follow the currently-skilled" thread is killed.** Selection by recent
+fills-verified PF finds last month's winners and nothing more; a
+two-disjoint-window variant is not worth building on ρ≈0 — there is no
+within-cohort ordering to exploit, not merely a noisy one. What survives
+the project is behavioral (how winners traded while winning: few, large,
+pyramided trips with wins held longer than losses — trips_findings
+Addendum 3) and the infrastructure (funnel, fills paging, trip extraction).
+The two hourly crons and their own scheduled analyses (whale_track ~07-27
+overdue, btc_track ~08-05) are separate questions and continue.
+
 ## Appendix — the 40 seed addresses (durable record; data/ is gitignored)
 
 ```
