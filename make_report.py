@@ -14,6 +14,11 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 OUT = "/home/smoltz/claude/crypto_whales/調査まとめ_2026-07-24.docx"
 
+# 日付の更新し忘れで既存版を無言で上書きしないためのガード(上書きしたいときは --force)
+import os, sys
+if os.path.exists(OUT) and "--force" not in sys.argv:
+    sys.exit(f"{OUT} は既に存在します。OUT の日付を更新するか、上書きなら --force を付けてください。")
+
 doc = Document()
 
 # --- base styles -----------------------------------------------------------

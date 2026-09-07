@@ -279,6 +279,7 @@
 
 - remote: `origin = https://github.com/smoltz29j/crypto_whales.git`（**private 前提**）。
 - **push はユーザーが言ったときだけ**。コミットは作業ごとに作る（英語・内容要約型メッセージ）。
+- `make_report.py` は `OUT` が既に存在すると終了するガードを追加（2026-09-07。日付更新し忘れによる無言上書き防止。上書きは `--force`）。
 - `data/` `__pycache__` `.venv/` は gitignore。`調査まとめ_*.docx` は**未追跡のまま**
   （追跡するかはユーザーに確認していない — 未確認）。
 - 作業前に `git fetch`（他マシンから push されるリポジトリがユーザー環境に存在するため、習慣として）。
